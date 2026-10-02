@@ -1,0 +1,48 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Sync verified Node files to main",
+			"type": "shell",
+			"command": "$backup = Join-Path $env:TEMP 'monitoreo-practicas-python-backup'; $source = (Get-Location).Path; $taskConfig = Join-Path $backup '.vscode\\tasks.json'; if (Test-Path -LiteralPath $taskConfig) { Remove-Item -LiteralPath $taskConfig }; $files = Get-ChildItem -LiteralPath $source -File -Recurse; foreach ($file in $files) { $relative = $file.FullName.Substring($source.Length + 1); $parts = $relative -split '[\\\\/]'; if ($parts -contains 'node_modules' -or $parts -contains '.git' -or $parts -contains '.vscode' -or $parts -contains '.vercel' -or $relative -eq '.env' -or $relative -eq 'cookies.txt' -or $relative -like 'data\\*.json') { continue }; $destination = Join-Path $backup $relative; New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null; Copy-Item -LiteralPath $file.FullName -Destination $destination -Force }; git -C $backup add -A; git -C $backup diff --cached --check; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; git -C $backup status --short --branch; git -C $backup diff --cached --stat; $envLeak = git -C $backup grep -l 'elyon2026' --; if ($LASTEXITCODE -eq 0) { Write-Output 'SECRET_LITERAL_FOUND'; exit 1 }; Write-Output 'No configured admin password is tracked'",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Validate project JS",
+			"type": "shell",
+			"command": "node --check \"C:/Users/diego/Desktop/control de practicas/server.js\"",
+			"args": [],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Validate project JS 2",
+			"type": "shell",
+			"command": "Set-Location 'C:\\Users\\diego\\Desktop\\control de practicas'; node --check .\\server.js",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Run API server",
+			"type": "shell",
+			"command": "Set-Location 'C:\\Users\\diego\\Desktop\\control de practicas'; node server.js",
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Check app health",
+			"type": "shell",
+			"command": "curl.exe -sS http://localhost:3000/api/health",
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Check admin auth requirement",
+			"type": "shell",
+			"command": "curl.exe -i -sS http://localhost:3000/api/admin/practicantes",
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

@@ -1,0 +1,9 @@
+node_modules/
+data/*.json
+!data/.gitkeep
+.env
+.vercel
+cookies.txt
+.env
+node_modules/
+.vercel
