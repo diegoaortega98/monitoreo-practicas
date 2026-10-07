@@ -118,7 +118,7 @@ export function renderPractitioners({ practitioners, attendances = [], onAction,
       ["edit", "Editar", "edit"],
       ["delete", "Eliminar", "trash"],
     ].forEach(([action, label, iconName]) => {
-      const actionButton = button(label, "ghost", "sm");
+      const actionButton = button("", "ghost", "sm");
       actionButton.setAttribute("aria-label", `${label}: ${person.nombreCompleto}`);
       actionButton.title = label;
       actionButton.dataset.action = action;
