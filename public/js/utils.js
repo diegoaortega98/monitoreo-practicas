@@ -29,6 +29,8 @@ export function el(tag, className = "", text = "") {
 export function icon(name, className = "") {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "16");
+  svg.setAttribute("height", "16");
   svg.setAttribute("aria-hidden", "true");
   if (className) svg.setAttribute("class", className);
   const fragment = document.createRange().createContextualFragment(iconPaths[name] || iconPaths.info);
