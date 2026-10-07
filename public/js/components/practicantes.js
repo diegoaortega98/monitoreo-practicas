@@ -114,11 +114,11 @@ export function renderPractitioners({ practitioners, attendances = [], onAction,
     actionCell.dataset.label = "Acciones";
     const actionBar = el("div", "table-actions");
     [
-      ["detail", "Ver detalle", "info"],
+      ["detail", "Ver", "info"],
       ["edit", "Editar", "edit"],
       ["delete", "Eliminar", "trash"],
     ].forEach(([action, label, iconName]) => {
-      const actionButton = button("", action === "delete" ? "ghost" : "ghost", "sm");
+      const actionButton = button(label, "ghost", "sm");
       actionButton.setAttribute("aria-label", `${label}: ${person.nombreCompleto}`);
       actionButton.title = label;
       actionButton.dataset.action = action;
