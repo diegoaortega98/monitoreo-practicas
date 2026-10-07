@@ -208,6 +208,7 @@ async function handlePractitionerAction(action, id) {
 // Solicita la meta de horas requerida para aprobar o reactivar un practicante.
 function showPractitionerApproval(person) {
   const form = el("form", "form-section");
+  form.id = "approval-form";
   const field = el("div", "field");
   const label = el("label", "", "Meta de horas");
   const input = document.createElement("input");
@@ -224,6 +225,7 @@ function showPractitionerApproval(person) {
   form.append(field, error);
   const save = button(person.estado === "rechazado" ? "Reactivar" : "Aprobar", "primary");
   save.type = "submit";
+  save.setAttribute("form", form.id);
   const footer = el("div", "inline-actions");
   footer.append(save);
   const modal = openModal({
@@ -237,7 +239,7 @@ function showPractitionerApproval(person) {
     if (!form.reportValidity()) return;
     save.disabled = true;
     try {
-      await api.aprobarPracticante(person.id, Number(input.value));
+      await api.aprobarPracticante(person.id, Number(input.value.replace(",", ".")));
       modal.close();
       toast(person.estado === "rechazado" ? "Practicante reactivado." : "Solicitud aprobada.", "success");
       await loadDashboard(false);
