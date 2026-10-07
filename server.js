@@ -113,7 +113,7 @@ app.use((error, _req, res, _next) => {
   }
 
   res.status(status).json({
-    error: status >= 500 ? "Ocurrió un error interno." : error.message,
+    error: status >= 500 && !error.exposeMessage ? "Ocurrió un error interno." : error.message,
   });
 });
 

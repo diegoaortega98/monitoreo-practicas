@@ -86,19 +86,28 @@ export async function leerPracticantes() {
 // Sincroniza la lista modificada dentro de una transacción serializada en PostgreSQL.
 async function modifyPostgresPractitioners(modify) {
   const client = await getClient();
+  let lockAdquirido = false;
   try {
-    await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock($1)", [721946103]);
+    await client.query("SELECT pg_advisory_lock($1)", [721946103]);
+    lockAdquirido = true;
     const practitioners = await readPostgresPractitioners(client);
     const result = modify(practitioners);
     const ids = practitioners.map((person) => person.id);
 
-    if (ids.length) {
-      await client.query("DELETE FROM practicantes WHERE NOT (id = ANY($1::uuid[]))", [ids]);
-    } else {
-      await client.query("DELETE FROM practicantes");
+    await client.query("BEGIN");
+    try {
+      if (ids.length) {
+        await client.query("DELETE FROM practicantes WHERE NOT (id = ANY($1::uuid[]))", [ids]);
+      } else {
+        await client.query("DELETE FROM practicantes");
+      }
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
     }
 
+    await client.query("BEGIN");
     for (const person of practitioners) {
       await client.query(
         `INSERT INTO practicantes (
@@ -184,12 +193,28 @@ async function modifyPostgresPractitioners(modify) {
     return result;
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    if (error.code === "42703") {
+      const migrationError = new Error(
+        "La base de datos no está migrada. Ejecuta 'npm run init-db' para actualizar el esquema.",
+      );
+      migrationError.status = 503;
+      migrationError.exposeMessage = true;
+      throw migrationError;
+    }
     if (error.code === "23505") {
       error.status = 409;
       error.message = "Ya existe un practicante con ese documento.";
     }
     throw error;
   } finally {
+    if (lockAdquirido) {
+      try {
+        await client.query("SELECT pg_advisory_unlock($1)", [721946103]);
+      } catch (error) {
+        client.release(error);
+        throw error;
+      }
+    }
     client.release();
   }
 }
