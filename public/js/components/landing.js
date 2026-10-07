@@ -73,6 +73,7 @@ export function initLanding({ onRefresh }) {
 // Permite enviar una solicitud pública de registro para aprobación administrativa.
 function showRegistrationModal() {
   const form = el("form", "form-section");
+  form.id = "registration-form";
   const grid = el("div", "form-grid form-grid--2");
   const fields = [
     ["nombreCompleto", "Nombre completo", "text", true],
@@ -104,6 +105,7 @@ function showRegistrationModal() {
   error.setAttribute("role", "alert");
   const submit = button("Enviar solicitud", "primary");
   submit.type = "submit";
+  submit.setAttribute("form", form.id);
   const footer = el("div", "inline-actions");
   footer.append(submit);
   form.append(grid, error);
