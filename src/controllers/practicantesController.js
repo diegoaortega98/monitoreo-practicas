@@ -116,6 +116,10 @@ export async function actualizarPracticante(req, res) {
     }
 
     Object.assign(practicante, datos, { actualizadoEn: new Date().toISOString() });
+    if (req.body.horasAcumuladas !== undefined) {
+      practicante.horasAcumuladas =
+        Math.round((req.body.horasAcumuladas + Number.EPSILON) * 100) / 100;
+    }
     return practicante;
   });
 

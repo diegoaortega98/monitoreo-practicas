@@ -42,6 +42,13 @@ export function validarDatosPracticante(datos) {
     return "metaHoras debe ser un número mayor que cero.";
   }
 
+  if (datos.horasAcumuladas !== undefined &&
+      (typeof datos.horasAcumuladas !== "number" ||
+       !Number.isFinite(datos.horasAcumuladas) ||
+       datos.horasAcumuladas < 0)) {
+    return "horasAcumuladas debe ser un número igual o mayor que cero.";
+  }
+
   return null;
 }
 

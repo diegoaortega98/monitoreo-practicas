@@ -3,7 +3,7 @@ import { badge, button, debounce, el, icon, progressClass } from "../utils.js";
 import { tableSkeleton } from "../ui/skeleton.js";
 
 // Construye filtros y una tabla adaptable con acciones administrativas.
-export function renderPractitioners({ practitioners, onAction, onNew, highlightId = "" }) {
+export function renderPractitioners({ practitioners, attendances = [], onAction, onNew, highlightId = "" }) {
   const section = el("section", "tab-panel");
   const toolbar = el("div", "toolbar");
   const filters = el("div", "toolbar__filters");
@@ -52,7 +52,7 @@ export function renderPractitioners({ practitioners, onAction, onNew, highlightI
   const table = el("table", "data-table");
   const head = el("thead");
   const header = el("tr");
-  ["Nombre", "Documento", "Carrera", "Semestres", "Horas / meta", "Estado", "Acciones"].forEach((label, index) => {
+  ["Nombre", "Documento", "Carrera", "Semestres", "Horas / meta", "Estado", "Asistencia hoy", "Acciones"].forEach((label, index) => {
     const cell = el("th", "", label);
     cell.scope = "col";
     if (index === 2 || index === 3) cell.dataset.priority = "low";
@@ -100,6 +100,16 @@ export function renderPractitioners({ practitioners, onAction, onNew, highlightI
     const status = el("td");
     status.dataset.label = "Estado";
     status.append(badge(percent >= 100 ? "Completado" : "En práctica", percent >= 100 ? "success" : "info", "sm"));
+    const todayAttendance = getTodayAttendance(attendances, person.id);
+    const attendanceStatus = el("td");
+    attendanceStatus.dataset.label = "Asistencia hoy";
+    attendanceStatus.append(
+      badge(
+        todayAttendance ? (todayAttendance.horaSalida ? "Salida marcada" : "En jornada") : "Sin marcación",
+        todayAttendance ? (todayAttendance.horaSalida ? "success" : "warning") : "neutral",
+        "sm",
+      ),
+    );
     const actionCell = el("td");
     actionCell.dataset.label = "Acciones";
     const actionBar = el("div", "table-actions");
@@ -117,7 +127,7 @@ export function renderPractitioners({ practitioners, onAction, onNew, highlightI
       actionBar.append(actionButton);
     });
     actionCell.append(actionBar);
-    row.append(name, documentCell, careerCell, semesters, progressCell, status, actionCell);
+    row.append(name, documentCell, careerCell, semesters, progressCell, status, attendanceStatus, actionCell);
     row.dataset.name = `${person.nombreCompleto} ${person.documento}`.toLocaleLowerCase("es-CO");
     row.dataset.career = person.carrera;
     if (person.id === highlightId) row.classList.add("row-highlight");
@@ -163,6 +173,19 @@ export function renderPractitioners({ practitioners, onAction, onNew, highlightI
   return section;
 }
 
+function getTodayAttendance(attendances, practitionerId) {
+  const now = new Date();
+  return attendances
+    .filter((record) => {
+      const entry = new Date(record.horaEntrada);
+      return record.practicanteId === practitionerId
+        && entry.getFullYear() === now.getFullYear()
+        && entry.getMonth() === now.getMonth()
+        && entry.getDate() === now.getDate();
+    })
+    .sort((a, b) => new Date(b.horaEntrada) - new Date(a.horaEntrada))[0] || null;
+}
+
 // Crea el formulario compatible con los campos que realmente acepta la API.
 export function renderPractitionerForm(person = null, onSubmit) {
   const form = el("form", "form-section");
@@ -176,6 +199,15 @@ export function renderPractitionerForm(person = null, onSubmit) {
     ["telefono", "Número de teléfono", "tel", person?.telefono || "", "Teléfono"],
     ["metaHoras", "Meta de horas", "number", person?.metaHoras ?? "", "Horas requeridas"],
   ];
+  if (person) {
+    fields.push([
+      "horasAcumuladas",
+      "Horas acumuladas",
+      "number",
+      person.horasAcumuladas ?? 0,
+      "Horas realizadas",
+    ]);
+  }
   fields.forEach(([name, labelText, type, value, placeholder]) => {
     const group = el("div", "field");
     const label = el("label", "", labelText);
@@ -198,6 +230,10 @@ export function renderPractitionerForm(person = null, onSubmit) {
       input.min = "0.01";
       input.step = "0.01";
     }
+    if (name === "horasAcumuladas") {
+      input.min = "0";
+      input.step = "0.01";
+    }
     const message = el("span", "field__message");
     message.id = `${id}-message`;
     input.setAttribute("aria-describedby", message.id);
@@ -205,7 +241,13 @@ export function renderPractitionerForm(person = null, onSubmit) {
     grid.append(group);
   });
 
-  const note = el("p", "field__message", "El contacto de emergencia se guarda junto con los demás datos del practicante.");
+  const note = el(
+    "p",
+    "field__message",
+    person
+      ? "Puedes corregir los datos personales, la meta y las horas acumuladas."
+      : "El contacto de emergencia se guarda junto con los demás datos del practicante.",
+  );
   const actions = el("div", "inline-actions");
   const save = button(person ? "Guardar cambios" : "Registrar practicante", "primary");
   save.type = "submit";
@@ -228,6 +270,7 @@ export function renderPractitionerForm(person = null, onSubmit) {
       telefono: data.get("telefono").trim(),
       metaHoras: Number(data.get("metaHoras")),
     };
+    if (person) payload.horasAcumuladas = Number(data.get("horasAcumuladas"));
     save.disabled = true;
     save.replaceChildren(el("span", "button__spinner"), el("span", "", "Guardando…"));
     try {

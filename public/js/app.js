@@ -25,6 +25,7 @@ const errorBoundary = document.querySelector("#error-boundary");
 let editingId = "";
 let highlightId = "";
 let pageLoaded = false;
+let dashboardLoading = false;
 
 // Conecta los módulos de interfaz y recupera una sesión administrativa existente.
 async function bootstrap() {
@@ -35,6 +36,9 @@ async function bootstrap() {
   document.querySelector("#refresh-dashboard").addEventListener("click", () => loadDashboard(true));
   document.querySelector("#reload-page").addEventListener("click", () => location.reload());
   document.addEventListener("keydown", handleShortcuts);
+  document.addEventListener("visibilitychange", refreshDashboardIfVisible);
+  window.addEventListener("focus", refreshDashboardIfVisible);
+  window.setInterval(refreshDashboardIfVisible, 30_000);
   window.addEventListener("hashchange", handleHashChange);
   window.addEventListener("error", showErrorBoundary);
   window.addEventListener("unhandledrejection", showErrorBoundary);
@@ -79,6 +83,8 @@ function showLanding() {
 
 // Obtiene los recursos administrativos y muestra skeleton mientras espera.
 async function loadDashboard(showLoading) {
+  if (dashboardLoading) return;
+  dashboardLoading = true;
   if (showLoading || !pageLoaded) {
     dashboardContent.replaceChildren(practitionerLoading());
     pageLoaded = false;
@@ -107,6 +113,8 @@ async function loadDashboard(showLoading) {
       () => loadDashboard(true),
     ));
     toast(error.message, "error");
+  } finally {
+    dashboardLoading = false;
   }
 }
 
@@ -121,6 +129,7 @@ function renderCurrentTab() {
   if (state.tab === "practicantes") {
     dashboardContent.replaceChildren(renderPractitioners({
       practitioners: state.practitioners,
+      attendances: state.attendances,
       highlightId,
       onNew: () => selectTab("agregar"),
       onAction: handlePractitionerAction,
@@ -136,6 +145,12 @@ function renderCurrentTab() {
     dashboardContent.replaceChildren(renderAddTab());
   } else {
     dashboardContent.replaceChildren(renderSettings());
+  }
+}
+
+function refreshDashboardIfVisible() {
+  if (!dashboard.hidden && document.visibilityState === "visible") {
+    loadDashboard(false);
   }
 }
 
@@ -323,11 +338,22 @@ function showAttendanceEditor(record) {
   const grid = el("div", "form-grid form-grid--2");
   const entry = datetimeField("edit-entry", "Hora de entrada", record.horaEntrada, true);
   const exit = datetimeField("edit-exit", "Hora de salida", record.horaSalida, false);
+  const hours = document.createElement("input");
+  hours.id = "edit-hours";
+  hours.type = "number";
+  hours.min = "0.01";
+  hours.step = "0.01";
+  hours.placeholder = Number(record.horas || 0).toFixed(2);
+  const hoursWrapper = el("div", "field");
+  const hoursLabel = el("label", "", "Horas reconocidas (opcional)");
+  hoursLabel.htmlFor = hours.id;
+  hoursWrapper.append(hoursLabel, hours);
   const description = textField("edit-description", "Descripción", record.descripcion || "");
-  grid.append(entry.wrapper, exit.wrapper, description.wrapper);
+  grid.append(entry.wrapper, exit.wrapper, hoursWrapper, description.wrapper);
+  const note = el("p", "field__message", "Déjalo vacío para recalcular las horas según la entrada y salida, o escribe un valor para corregirlas manualmente.");
   const error = el("p", "field__message field__message--error");
   error.setAttribute("role", "alert");
-  form.append(grid, error);
+  form.append(grid, note, error);
   const save = button("Guardar corrección", "primary");
   save.type = "submit";
   const footer = el("div", "inline-actions");
@@ -341,6 +367,7 @@ function showAttendanceEditor(record) {
       await api.updateAttendance(record.practicanteId, record.id, {
         horaEntrada: fromLocalDateTime(entry.input.value),
         horaSalida: exit.input.value ? fromLocalDateTime(exit.input.value) : null,
+        horas: hours.value === "" ? undefined : Number(hours.value),
         descripcion: description.input.value.trim(),
       });
       modal.close();

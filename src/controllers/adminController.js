@@ -97,8 +97,8 @@ export async function crearAsistenciaManual(req, res) {
 
 // Corrige las horas de entrada o salida y ajusta el acumulado.
 export async function actualizarAsistencia(req, res) {
-  const { horaEntrada, horaSalida, descripcion } = req.body || {};
-  const errorValidacion = validarFechasAsistencia(horaEntrada, horaSalida, descripcion);
+  const { horaEntrada, horaSalida, horas, descripcion } = req.body || {};
+  const errorValidacion = validarFechasAsistencia(horaEntrada, horaSalida, descripcion, horas);
   if (errorValidacion) throw crearError(400, errorValidacion);
 
   const asistencia = await modificarPracticantes((practicantes) => {
@@ -111,7 +111,9 @@ export async function actualizarAsistencia(req, res) {
     const horasAnteriores = registro.horas || 0;
     const entrada = new Date(horaEntrada).toISOString();
     const salida = horaSalida ? new Date(horaSalida).toISOString() : null;
-    const horasNuevas = salida ? calcularHoras(entrada, salida) : 0;
+    const horasNuevas = salida
+      ? (horas === undefined ? calcularHoras(entrada, salida) : redondear(horas))
+      : 0;
     if (salida && horasNuevas <= 0) {
       throw crearError(400, "La hora de salida debe ser posterior a la entrada.");
     }
@@ -147,7 +149,7 @@ export async function eliminarAsistencia(req, res) {
 }
 
 // Valida y normaliza las fechas requeridas para una asistencia.
-function validarFechasAsistencia(horaEntrada, horaSalida, descripcion) {
+function validarFechasAsistencia(horaEntrada, horaSalida, descripcion, horas) {
   if (typeof horaEntrada !== "string" || Number.isNaN(Date.parse(horaEntrada))) {
     return "horaEntrada debe ser una fecha y hora válida.";
   }
@@ -157,6 +159,12 @@ function validarFechasAsistencia(horaEntrada, horaSalida, descripcion) {
   }
   if (descripcion !== undefined && typeof descripcion !== "string") {
     return "descripcion debe ser texto.";
+  }
+  if (horas !== undefined && (typeof horas !== "number" || !Number.isFinite(horas) || horas < 0)) {
+    return "horas debe ser un número igual o mayor que cero.";
+  }
+  if (!horaSalida && horas !== undefined && horas !== 0) {
+    return "No se pueden registrar horas reconocidas sin una hora de salida.";
   }
   return null;
 }
