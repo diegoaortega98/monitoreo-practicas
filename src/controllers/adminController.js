@@ -71,6 +71,9 @@ export async function rechazarPracticante(req, res) {
     if (!encontrado) throw crearError(404, "No se encontró el practicante.");
     Object.assign(encontrado, {
       estado: "rechazado",
+      metaHoras: null,
+      aprobadoEn: null,
+      aprobadoPor: null,
       actualizadoEn: new Date().toISOString(),
     });
     return encontrado;
