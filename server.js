@@ -9,6 +9,7 @@ import practicantesRouter from "./src/routes/practicantes.js";
 import adminRouter from "./src/routes/admin.js";
 import asistenciaRouter from "./src/routes/asistencia.js";
 import { inicializarAlmacenamiento } from "./src/services/storage.js";
+import { requireAdmin } from "./src/middleware/auth.js";
 
 const app = express();
 const puerto = Number(process.env.PORT) || 3000;
@@ -86,7 +87,7 @@ app.use("/api", (req, res, next) => {
 });
 app.use("/api/admin", adminRouter);
 app.use("/api/asistencia", asistenciaRouter);
-app.use("/api/practicantes", practicantesRouter);
+app.use("/api/practicantes", requireAdmin, practicantesRouter);
 
 // Responde con JSON cuando la ruta solicitada no existe.
 app.use((req, res) => {

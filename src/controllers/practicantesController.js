@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { leerPracticantes, modificarPracticantes } from "../services/storage.js";
 import {
+  normalizarDocumento,
   validarDatosPracticante,
   validarRegistroHoras,
 } from "../utils/validators.js";
@@ -46,7 +47,7 @@ function calcularProgreso(practicante) {
 function normalizarDatos(datos) {
   return {
     nombreCompleto: datos.nombreCompleto.trim(),
-    documento: datos.documento.trim(),
+    documento: normalizarDocumento(datos.documento),
     carrera: datos.carrera.trim(),
     semestresCursados: datos.semestresCursados,
     contactoEmergencia: datos.contactoEmergencia?.trim() || "",
@@ -64,7 +65,8 @@ export async function crearPracticante(req, res) {
 
   const datos = normalizarDatos(req.body);
   const practicante = await modificarPracticantes((practicantes) => {
-    if (practicantes.some((item) => item.documento === datos.documento)) {
+    const documentoNormalizado = normalizarDocumento(datos.documento);
+    if (practicantes.some((item) => normalizarDocumento(item.documento) === documentoNormalizado)) {
       throw crearError(409, "Ya existe un practicante con ese documento.");
     }
 
@@ -106,8 +108,9 @@ export async function actualizarPracticante(req, res) {
   const datos = normalizarDatos(req.body);
   const actualizado = await modificarPracticantes((practicantes) => {
     const practicante = buscarPorId(practicantes, req.params.id);
+    const documentoNormalizado = normalizarDocumento(datos.documento);
     if (practicantes.some(
-      (item) => item.id !== req.params.id && item.documento === datos.documento,
+      (item) => item.id !== req.params.id && normalizarDocumento(item.documento) === documentoNormalizado,
     )) {
       throw crearError(409, "Ya existe otro practicante con ese documento.");
     }

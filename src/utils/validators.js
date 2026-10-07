@@ -5,6 +5,11 @@ const camposTexto = [
   ["telefono", "El teléfono"],
 ];
 
+export function normalizarDocumento(documento) {
+  if (typeof documento !== "string") return "";
+  return documento.trim().replace(/[\s.-]+/g, "").toUpperCase();
+}
+
 // Comprueba que el cuerpo sea un objeto JSON y no una lista o un valor nulo.
 function esObjeto(datos) {
   return datos !== null && typeof datos === "object" && !Array.isArray(datos);
@@ -17,7 +22,7 @@ export function validarDatosPracticante(datos) {
   }
 
   for (const [campo, etiqueta] of camposTexto) {
-    if (typeof datos[campo] !== "string" || datos[campo].trim() === "") {
+    if (typeof datos[campo] !== "string" || normalizarDocumento(datos[campo]) === "") {
       return `${etiqueta} es obligatorio y debe ser texto no vacío.`;
     }
   }

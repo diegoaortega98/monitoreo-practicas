@@ -14,8 +14,9 @@ export function initLanding({ onRefresh }) {
   const recentList = document.querySelector("#recent-list");
 
   document.querySelector("#clock-document").addEventListener("input", (event) => {
-    if (currentDocument && event.target.value.trim() !== currentDocument) {
-      currentDocument = event.target.value.trim();
+    const documento = normalizarDocumentoForm(event.target.value);
+    if (currentDocument && documento !== currentDocument) {
+      currentDocument = documento;
       renderRecent(recentList, recentSection);
     }
   });
@@ -24,7 +25,7 @@ export function initLanding({ onRefresh }) {
     event.preventDefault();
     const action = event.submitter?.value;
     const documentInput = form.elements.documento;
-    const documento = documentInput.value.trim();
+    const documento = normalizarDocumentoForm(documentInput.value);
     if (!documento || !["entrada", "salida"].includes(action)) return;
     currentDocument = documento;
 
@@ -80,6 +81,10 @@ function renderRecent(list, section) {
     list.append(row);
   });
   section.hidden = records.length === 0;
+}
+
+function normalizarDocumentoForm(value) {
+  return String(value ?? "").trim().replace(/[\s.-]+/g, "").toUpperCase();
 }
 
 function setLoading(button, loading) {

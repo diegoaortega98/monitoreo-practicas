@@ -221,7 +221,7 @@ export function renderPractitionerForm(person = null, onSubmit) {
     const data = new FormData(form);
     const payload = {
       nombreCompleto: data.get("nombreCompleto").trim(),
-      documento: data.get("documento").trim(),
+      documento: String(data.get("documento") || "").trim().replace(/[\s.-]+/g, "").toUpperCase(),
       carrera: data.get("carrera").trim(),
       semestresCursados: Number(data.get("semestresCursados")),
       contactoEmergencia: data.get("contactoEmergencia").trim(),

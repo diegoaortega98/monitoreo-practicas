@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { modificarPracticantes } from "../services/storage.js";
+import { normalizarDocumento } from "../utils/validators.js";
 
 // Informa errores con el estado HTTP apropiado al middleware central.
 function crearError(status, message) {
@@ -11,12 +12,15 @@ function crearError(status, message) {
 // Busca al practicante por documento y registra su hora de entrada.
 export async function marcarEntrada(req, res) {
   const { documento } = req.body || {};
-  if (typeof documento !== "string" || !documento.trim()) {
+  const documentoNormalizado = normalizarDocumento(documento);
+  if (!documentoNormalizado) {
     throw crearError(400, "Ingresa el número de documento.");
   }
 
   const resultado = await modificarPracticantes((practicantes) => {
-    const practicante = practicantes.find((item) => item.documento === documento.trim());
+    const practicante = practicantes.find(
+      (item) => normalizarDocumento(item.documento) === documentoNormalizado,
+    );
     if (!practicante) throw crearError(404, "No se encontró un practicante con ese documento.");
     practicante.registrosAsistencia ||= [];
     if (practicante.registrosAsistencia.some((registro) => !registro.horaSalida)) {
@@ -47,12 +51,15 @@ export async function marcarEntrada(req, res) {
 // Registra la salida abierta y suma su duración a las horas acumuladas.
 export async function marcarSalida(req, res) {
   const { documento } = req.body || {};
-  if (typeof documento !== "string" || !documento.trim()) {
+  const documentoNormalizado = normalizarDocumento(documento);
+  if (!documentoNormalizado) {
     throw crearError(400, "Ingresa el número de documento.");
   }
 
   const resultado = await modificarPracticantes((practicantes) => {
-    const practicante = practicantes.find((item) => item.documento === documento.trim());
+    const practicante = practicantes.find(
+      (item) => normalizarDocumento(item.documento) === documentoNormalizado,
+    );
     if (!practicante) throw crearError(404, "No se encontró un practicante con ese documento.");
     practicante.registrosAsistencia ||= [];
     const registro = [...practicante.registrosAsistencia]
