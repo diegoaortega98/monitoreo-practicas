@@ -127,7 +127,7 @@ function showRegistrationModal() {
       semestresCursados: Number(values.get("semestresCursados")),
       telefono: values.get("telefono").trim(),
       contactoEmergencia: values.get("contactoEmergencia").trim(),
-      email: values.get("email").trim(),
+      email: values.get("email").trim() || undefined,
     };
     submit.disabled = true;
     try {
