@@ -114,16 +114,15 @@ export function renderPractitioners({ practitioners, attendances = [], onAction,
     actionCell.dataset.label = "Acciones";
     const actionBar = el("div", "table-actions");
     [
-      ["detail", "Ver", "info"],
-      ["edit", "Editar", "edit"],
-      ["delete", "Eliminar", "trash"],
-    ].forEach(([action, label, iconName]) => {
-      const actionButton = button("", "ghost", "sm");
+      ["detail", "Ver detalle", "👁️"],
+      ["edit", "Editar", "✏️"],
+      ["delete", "Eliminar", "🗑️"],
+    ].forEach(([action, label, emoji]) => {
+      const actionButton = button(emoji, "ghost", "sm");
       actionButton.setAttribute("aria-label", `${label}: ${person.nombreCompleto}`);
       actionButton.title = label;
       actionButton.dataset.action = action;
       actionButton.dataset.id = person.id;
-      actionButton.append(icon(iconName));
       actionBar.append(actionButton);
     });
     actionCell.append(actionBar);
