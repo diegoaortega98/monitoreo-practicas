@@ -239,6 +239,38 @@ export function modificarPracticantes(modify) {
   return operation;
 }
 
+// Elimina un practicante directamente en PostgreSQL y deja que CASCADE borre sus registros.
+export async function eliminarPracticantePorId(id) {
+  const client = await getClient();
+  let releaseError;
+  try {
+    await client.query("BEGIN");
+    const result = await client.query(
+      "DELETE FROM practicantes WHERE id = $1::uuid",
+      [id],
+    );
+    if (result.rowCount === 0) {
+      const error = new Error("No se encontró el practicante.");
+      error.status = 404;
+      throw error;
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      releaseError = rollbackError;
+      console.error("No se pudo revertir la eliminación del practicante:", {
+        code: rollbackError.code,
+        message: rollbackError.message,
+      });
+    }
+    throw error;
+  } finally {
+    client.release(releaseError);
+  }
+}
+
 // Prepara el almacenamiento local JSON o verifica la conectividad con PostgreSQL.
 export async function inicializarAlmacenamiento() {
   if (usaPostgres()) {

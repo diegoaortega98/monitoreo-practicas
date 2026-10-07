@@ -1,5 +1,10 @@
 import { v4 as uuidv4 } from "uuid";
-import { leerPracticantes, modificarPracticantes } from "../services/storage.js";
+import {
+  eliminarPracticantePorId,
+  leerPracticantes,
+  modificarPracticantes,
+} from "../services/storage.js";
+import { usaPostgres } from "../services/db.js";
 import {
   normalizarDocumento,
   validarDatosPracticante,
@@ -208,13 +213,17 @@ export async function actualizarPracticante(req, res) {
 
 // Elimina un practicante y sus registros de horas junto con él.
 export async function eliminarPracticante(req, res) {
-  await modificarPracticantes((practicantes) => {
-    const indice = practicantes.findIndex((item) => item.id === req.params.id);
-    if (indice === -1) {
-      throw crearError(404, "No se encontró el practicante.");
-    }
-    practicantes.splice(indice, 1);
-  });
+  if (usaPostgres()) {
+    await eliminarPracticantePorId(req.params.id);
+  } else {
+    await modificarPracticantes((practicantes) => {
+      const indice = practicantes.findIndex((item) => item.id === req.params.id);
+      if (indice === -1) {
+        throw crearError(404, "No se encontró el practicante.");
+      }
+      practicantes.splice(indice, 1);
+    });
+  }
 
   res.status(204).end();
 }
