@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { state } from "../state.js";
-import { el, formatDate } from "../utils.js";
+import { button, el, formatDate } from "../utils.js";
+import { openModal } from "../ui/modal.js";
 import { toast } from "../ui/toast.js";
 
 let currentDocument = "";
@@ -12,6 +13,11 @@ export function initLanding({ onRefresh }) {
   const feedback = document.querySelector("#clock-feedback");
   const recentSection = document.querySelector("#recent-section");
   const recentList = document.querySelector("#recent-list");
+  const registerActions = el("div", "inline-actions");
+  const registerButton = button("Registrarme", "secondary");
+  registerActions.append(registerButton);
+  form.after(registerActions);
+  registerButton.addEventListener("click", showRegistrationModal);
 
   document.querySelector("#clock-document").addEventListener("input", (event) => {
     const documento = normalizarDocumentoForm(event.target.value);
@@ -62,6 +68,78 @@ export function initLanding({ onRefresh }) {
   });
 
   renderRecent(recentList, recentSection);
+}
+
+// Permite enviar una solicitud pública de registro para aprobación administrativa.
+function showRegistrationModal() {
+  const form = el("form", "form-section");
+  const grid = el("div", "form-grid form-grid--2");
+  const fields = [
+    ["nombreCompleto", "Nombre completo", "text", true],
+    ["documento", "Documento", "text", true],
+    ["carrera", "Carrera", "text", true],
+    ["semestresCursados", "Semestres cursados", "number", true],
+    ["telefono", "Teléfono", "tel", true],
+    ["contactoEmergencia", "Contacto de emergencia", "text", true],
+    ["email", "Email (opcional)", "email", false],
+  ];
+  fields.forEach(([name, labelText, type, required]) => {
+    const wrapper = el("div", "field");
+    const label = el("label", "", labelText);
+    const input = document.createElement("input");
+    input.type = type;
+    input.name = name;
+    input.required = required;
+    if (name === "semestresCursados") {
+      input.min = "0";
+      input.step = "1";
+      input.inputMode = "numeric";
+    }
+    label.htmlFor = `registration-${name}`;
+    input.id = label.htmlFor;
+    wrapper.append(label, input);
+    grid.append(wrapper);
+  });
+  const error = el("p", "field__message field__message--error");
+  error.setAttribute("role", "alert");
+  const submit = button("Enviar solicitud", "primary");
+  submit.type = "submit";
+  const footer = el("div", "inline-actions");
+  footer.append(submit);
+  form.append(grid, error);
+  const modal = openModal({
+    title: "Registro de practicante",
+    body: form,
+    footer,
+    className: "modal--wide",
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!form.reportValidity()) return;
+    const values = new FormData(form);
+    const payload = {
+      nombreCompleto: values.get("nombreCompleto").trim(),
+      documento: normalizarDocumentoForm(values.get("documento")),
+      carrera: values.get("carrera").trim(),
+      semestresCursados: Number(values.get("semestresCursados")),
+      telefono: values.get("telefono").trim(),
+      contactoEmergencia: values.get("contactoEmergencia").trim(),
+      email: values.get("email").trim(),
+    };
+    submit.disabled = true;
+    try {
+      const result = await api.registrarPracticante(payload);
+      form.reset();
+      modal.close();
+      toast(result.mensaje, "success");
+    } catch (problem) {
+      error.textContent = problem.message;
+      toast(problem.message, problem.status === 409 ? "warning" : "error");
+    } finally {
+      if (submit.isConnected) submit.disabled = false;
+    }
+  });
 }
 
 function addRecent(list, label, time, hours, documento) {

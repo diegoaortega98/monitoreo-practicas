@@ -6,6 +6,7 @@ import {
   listarPracticantes,
   obtenerPracticante,
   obtenerProgreso,
+  registrarPracticantePublico,
   registrarHoras,
 } from "../controllers/practicantesController.js";
 import { requireAdmin } from "../middleware/auth.js";
@@ -19,6 +20,7 @@ function manejarAsync(controlador) {
   };
 }
 
+router.post("/registro", manejarAsync(registrarPracticantePublico));
 router.use(requireAdmin);
 router.post("/", manejarAsync(crearPracticante));
 router.get("/", manejarAsync(listarPracticantes));

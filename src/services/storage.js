@@ -18,8 +18,12 @@ function mapPractitioner(row, attendances, hourRecords) {
     semestresCursados: row.semestres_cursados,
     contactoEmergencia: row.contacto_emergencia || "",
     telefono: row.telefono || "",
-    metaHoras: Number(row.meta_horas),
+    email: row.email || null,
+    metaHoras: row.meta_horas === null ? null : Number(row.meta_horas),
     horasAcumuladas: Number(row.horas_acumuladas),
+    estado: row.estado || "activo",
+    aprobadoEn: row.aprobado_en ? new Date(row.aprobado_en).toISOString() : null,
+    aprobadoPor: row.aprobado_por || null,
     registrosHoras: hourRecords.get(row.id) || [],
     registrosAsistencia: attendances.get(row.id) || [],
     creadoEn: new Date(row.creado_en).toISOString(),
@@ -99,9 +103,9 @@ async function modifyPostgresPractitioners(modify) {
       await client.query(
         `INSERT INTO practicantes (
           id, nombre_completo, documento, carrera, semestres_cursados,
-          contacto_emergencia, telefono, meta_horas, horas_acumuladas,
-          creado_en, actualizado_en
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          contacto_emergencia, telefono, email, meta_horas, horas_acumuladas,
+          estado, aprobado_en, aprobado_por, creado_en, actualizado_en
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         ON CONFLICT (id) DO UPDATE SET
           nombre_completo = EXCLUDED.nombre_completo,
           documento = EXCLUDED.documento,
@@ -109,8 +113,12 @@ async function modifyPostgresPractitioners(modify) {
           semestres_cursados = EXCLUDED.semestres_cursados,
           contacto_emergencia = EXCLUDED.contacto_emergencia,
           telefono = EXCLUDED.telefono,
+          email = EXCLUDED.email,
           meta_horas = EXCLUDED.meta_horas,
           horas_acumuladas = EXCLUDED.horas_acumuladas,
+          estado = EXCLUDED.estado,
+          aprobado_en = EXCLUDED.aprobado_en,
+          aprobado_por = EXCLUDED.aprobado_por,
           actualizado_en = EXCLUDED.actualizado_en`,
         [
           person.id,
@@ -120,8 +128,12 @@ async function modifyPostgresPractitioners(modify) {
           person.semestresCursados,
           person.contactoEmergencia || null,
           person.telefono || null,
+          person.email || null,
           person.metaHoras,
           person.horasAcumuladas || 0,
+          person.estado || "activo",
+          person.aprobadoEn || null,
+          person.aprobadoPor || null,
           person.creadoEn || new Date(),
           person.actualizadoEn || new Date(),
         ],
@@ -240,15 +252,16 @@ export async function importarDesdeJson(jsonPractitioners) {
     }
     for (const person of jsonPractitioners) {
       if (!person.id || !person.nombreCompleto || !person.documento || !person.carrera ||
-          !Number.isInteger(person.semestresCursados) || !(Number(person.metaHoras) > 0)) {
+        !Number.isInteger(person.semestresCursados) ||
+        ((person.estado || "activo") === "activo" && !(Number(person.metaHoras) > 0))) {
         throw new Error(`El practicante con documento ${person.documento || "(sin documento)"} no tiene datos válidos.`);
       }
       await client.query(
         `INSERT INTO practicantes (
           id, nombre_completo, documento, carrera, semestres_cursados,
-          contacto_emergencia, telefono, meta_horas, horas_acumuladas,
-          creado_en, actualizado_en
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          contacto_emergencia, telefono, email, meta_horas, horas_acumuladas,
+          estado, aprobado_en, aprobado_por, creado_en, actualizado_en
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
         [
           person.id,
           person.nombreCompleto,
@@ -257,8 +270,12 @@ export async function importarDesdeJson(jsonPractitioners) {
           person.semestresCursados,
           person.contactoEmergencia || null,
           person.telefono || null,
+          person.email || null,
           person.metaHoras,
           person.horasAcumuladas || 0,
+          person.estado || "activo",
+          person.aprobadoEn || null,
+          person.aprobadoPor || null,
           person.creadoEn || new Date(),
           person.actualizadoEn || new Date(),
         ],

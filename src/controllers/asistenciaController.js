@@ -22,6 +22,7 @@ export async function marcarEntrada(req, res) {
       (item) => normalizarDocumento(item.documento) === documentoNormalizado,
     );
     if (!practicante) throw crearError(404, "No se encontró un practicante con ese documento.");
+    validarEstadoPracticante(practicante);
     practicante.registrosAsistencia ||= [];
     if (practicante.registrosAsistencia.some((registro) => !registro.horaSalida)) {
       throw crearError(
@@ -61,6 +62,7 @@ export async function marcarSalida(req, res) {
       (item) => normalizarDocumento(item.documento) === documentoNormalizado,
     );
     if (!practicante) throw crearError(404, "No se encontró un practicante con ese documento.");
+    validarEstadoPracticante(practicante);
     practicante.registrosAsistencia ||= [];
     const registro = [...practicante.registrosAsistencia]
       .reverse()
@@ -85,4 +87,17 @@ export async function marcarSalida(req, res) {
   });
 
   res.json(resultado);
+}
+
+// Impide marcar asistencia mientras la solicitud no esté aprobada.
+function validarEstadoPracticante(practicante) {
+  if (practicante.estado === "pendiente") {
+    throw crearError(403, "Tu registro está pendiente de aprobación. Contacta al administrador.");
+  }
+  if (practicante.estado === "rechazado") {
+    throw crearError(403, "Tu registro fue rechazado. Contacta al administrador.");
+  }
+  if (practicante.estado && practicante.estado !== "activo") {
+    throw crearError(403, "Tu registro no está habilitado para marcar asistencia. Contacta al administrador.");
+  }
 }

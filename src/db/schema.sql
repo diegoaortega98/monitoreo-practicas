@@ -6,11 +6,23 @@ CREATE TABLE IF NOT EXISTS practicantes (
   semestres_cursados INTEGER NOT NULL CHECK (semestres_cursados >= 0),
   contacto_emergencia TEXT,
   telefono TEXT,
-  meta_horas NUMERIC(7,2) NOT NULL CHECK (meta_horas > 0),
+  meta_horas NUMERIC(7,2) CHECK (meta_horas IS NULL OR meta_horas > 0),
   horas_acumuladas NUMERIC(7,2) NOT NULL DEFAULT 0 CHECK (horas_acumuladas >= 0),
+  estado TEXT NOT NULL DEFAULT 'activo' CHECK (estado IN ('pendiente', 'activo', 'rechazado')),
+  aprobado_en TIMESTAMPTZ,
+  aprobado_por TEXT,
+  email TEXT,
   creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE practicantes ALTER COLUMN meta_horas DROP NOT NULL;
+ALTER TABLE practicantes
+  ADD COLUMN IF NOT EXISTS estado TEXT NOT NULL DEFAULT 'activo'
+    CHECK (estado IN ('pendiente', 'activo', 'rechazado')),
+  ADD COLUMN IF NOT EXISTS aprobado_en TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS aprobado_por TEXT,
+  ADD COLUMN IF NOT EXISTS email TEXT;
 
 CREATE TABLE IF NOT EXISTS asistencias (
   id UUID PRIMARY KEY,

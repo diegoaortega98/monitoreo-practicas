@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  aprobarPracticante,
   actualizarAsistencia,
   crearAsistenciaManual,
   eliminarAsistencia,
@@ -7,6 +8,7 @@ import {
   loginAdmin,
   logoutAdmin,
   meAdmin,
+  rechazarPracticante,
 } from "../controllers/adminController.js";
 import {
   actualizarPracticante,
@@ -32,6 +34,8 @@ router.get("/me", manejarAsync(meAdmin));
 router.post("/logout", manejarAsync(logoutAdmin));
 router.get("/practicantes", manejarAsync(listarPracticantes));
 router.post("/practicantes", manejarAsync(crearPracticante));
+router.patch("/practicantes/:id/aprobar", manejarAsync(aprobarPracticante));
+router.patch("/practicantes/:id/rechazar", manejarAsync(rechazarPracticante));
 router.get("/practicantes/:id", manejarAsync(obtenerPracticante));
 router.put("/practicantes/:id", manejarAsync(actualizarPracticante));
 router.delete("/practicantes/:id", manejarAsync(eliminarPracticante));

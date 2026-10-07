@@ -41,6 +41,43 @@ export async function logoutAdmin(req, res) {
   res.status(204).end();
 }
 
+// Aprueba una solicitud y registra quién autorizó la meta de horas.
+export async function aprobarPracticante(req, res) {
+  const { metaHoras } = req.body || {};
+  if (typeof metaHoras !== "number" || !Number.isFinite(metaHoras) ||
+      metaHoras <= 0 || Math.round(metaHoras * 100) / 100 <= 0) {
+    throw crearError(400, "metaHoras debe ser un número mayor que cero.");
+  }
+
+  const practicante = await modificarPracticantes((practicantes) => {
+    const encontrado = practicantes.find((item) => item.id === req.params.id);
+    if (!encontrado) throw crearError(404, "No se encontró el practicante.");
+    Object.assign(encontrado, {
+      estado: "activo",
+      metaHoras: Math.round((metaHoras + Number.EPSILON) * 100) / 100,
+      aprobadoEn: new Date().toISOString(),
+      aprobadoPor: req.admin.usuario,
+      actualizadoEn: new Date().toISOString(),
+    });
+    return encontrado;
+  });
+  res.json(practicante);
+}
+
+// Rechaza una solicitud sin eliminar sus datos ni su historial.
+export async function rechazarPracticante(req, res) {
+  const practicante = await modificarPracticantes((practicantes) => {
+    const encontrado = practicantes.find((item) => item.id === req.params.id);
+    if (!encontrado) throw crearError(404, "No se encontró el practicante.");
+    Object.assign(encontrado, {
+      estado: "rechazado",
+      actualizadoEn: new Date().toISOString(),
+    });
+    return encontrado;
+  });
+  res.json(practicante);
+}
+
 // Lista las asistencias completas y pendientes de todos los practicantes.
 export async function listarAsistencias(_req, res) {
   const practicantes = await leerPracticantes();

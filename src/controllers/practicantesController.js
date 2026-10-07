@@ -3,6 +3,7 @@ import { leerPracticantes, modificarPracticantes } from "../services/storage.js"
 import {
   normalizarDocumento,
   validarDatosPracticante,
+  validarRegistroPublico,
   validarRegistroHoras,
 } from "../utils/validators.js";
 
@@ -26,11 +27,15 @@ function buscarPorId(practicantes, id) {
 function calcularProgreso(practicante) {
   const metaHoras = practicante.metaHoras;
   const horasAcumuladas = practicante.horasAcumuladas;
-  const horasFaltantes = Math.max(0, metaHoras - horasAcumuladas);
-  const porcentaje = Math.min(
-    100,
-    Math.max(0, Math.round((horasAcumuladas / metaHoras) * 10000) / 100),
-  );
+  const horasFaltantes = metaHoras == null
+    ? null
+    : Math.max(0, metaHoras - horasAcumuladas);
+  const porcentaje = metaHoras > 0
+    ? Math.min(
+      100,
+      Math.max(0, Math.round((horasAcumuladas / metaHoras) * 10000) / 100),
+    )
+    : 0;
 
   return {
     id: practicante.id,
@@ -39,7 +44,7 @@ function calcularProgreso(practicante) {
     horasAcumuladas,
     horasFaltantes,
     porcentaje,
-    completado: horasFaltantes === 0,
+    completado: metaHoras > 0 && horasFaltantes === 0,
   };
 }
 
@@ -74,6 +79,10 @@ export async function crearPracticante(req, res) {
     const nuevoPracticante = {
       id: uuidv4(),
       ...datos,
+      estado: "activo",
+      aprobadoEn: null,
+      aprobadoPor: null,
+      email: null,
       horasAcumuladas: 0,
       registrosHoras: [],
       registrosAsistencia: [],
@@ -87,9 +96,80 @@ export async function crearPracticante(req, res) {
   res.status(201).json(practicante);
 }
 
+// Recibe solicitudes públicas y reabre solicitudes previamente rechazadas.
+export async function registrarPracticantePublico(req, res) {
+  const errorValidacion = validarRegistroPublico(req.body);
+  if (errorValidacion) throw crearError(400, errorValidacion);
+
+  const datos = {
+    nombreCompleto: req.body.nombreCompleto.trim(),
+    documento: normalizarDocumento(req.body.documento),
+    carrera: req.body.carrera.trim(),
+    semestresCursados: req.body.semestresCursados,
+    contactoEmergencia: req.body.contactoEmergencia.trim(),
+    telefono: req.body.telefono.trim(),
+    email: req.body.email?.trim() || null,
+  };
+  const resultado = await modificarPracticantes((practicantes) => {
+    const existente = practicantes.find(
+      (item) => normalizarDocumento(item.documento) === datos.documento,
+    );
+    if (existente) {
+      const estado = existente.estado || "activo";
+      if (estado === "activo") {
+        throw crearError(409, "Ya existe un practicante registrado con ese documento.");
+      }
+      if (estado === "pendiente") {
+        throw crearError(409, "Ya hay una solicitud pendiente con ese documento. Espera la aprobación.");
+      }
+      if (estado !== "rechazado") {
+        throw crearError(409, "No se puede registrar una solicitud con ese documento.");
+      }
+      Object.assign(existente, datos, {
+        estado: "pendiente",
+        metaHoras: null,
+        aprobadoEn: null,
+        aprobadoPor: null,
+        actualizadoEn: new Date().toISOString(),
+      });
+      return existente;
+    }
+
+    const ahora = new Date().toISOString();
+    const nuevoPracticante = {
+      id: uuidv4(),
+      ...datos,
+      estado: "pendiente",
+      metaHoras: null,
+      aprobadoEn: null,
+      aprobadoPor: null,
+      horasAcumuladas: 0,
+      registrosHoras: [],
+      registrosAsistencia: [],
+      creadoEn: ahora,
+      actualizadoEn: ahora,
+    };
+    practicantes.push(nuevoPracticante);
+    return nuevoPracticante;
+  });
+
+  res.status(201).json({
+    mensaje: "Registro enviado. Espera la aprobación del administrador.",
+    practicante: {
+      id: resultado.id,
+      nombreCompleto: resultado.nombreCompleto,
+    },
+  });
+}
+
 // Devuelve todos los practicantes guardados.
 export async function listarPracticantes(_req, res) {
-  res.json(await leerPracticantes());
+  const practicantes = await leerPracticantes();
+  res.json(practicantes.map((practicante) => ({
+    ...practicante,
+    estado: practicante.estado || "activo",
+    aprobadoEn: practicante.aprobadoEn || null,
+  })));
 }
 
 // Devuelve un practicante identificado por su UUID.

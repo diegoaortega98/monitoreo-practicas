@@ -198,6 +198,72 @@ async function handlePractitionerAction(action, id) {
     selectTab("agregar");
   } else if (action === "delete") {
     await deletePractitioner(person);
+  } else if (action === "approve") {
+    showPractitionerApproval(person);
+  } else if (action === "reject") {
+    await rejectPractitioner(person);
+  }
+}
+
+// Solicita la meta de horas requerida para aprobar o reactivar un practicante.
+function showPractitionerApproval(person) {
+  const form = el("form", "form-section");
+  const field = el("div", "field");
+  const label = el("label", "", "Meta de horas");
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = "0.01";
+  input.step = "0.01";
+  input.required = true;
+  input.autocomplete = "off";
+  label.htmlFor = "approval-meta-hours";
+  input.id = label.htmlFor;
+  field.append(label, input);
+  const error = el("p", "field__message field__message--error");
+  error.setAttribute("role", "alert");
+  form.append(field, error);
+  const save = button(person.estado === "rechazado" ? "Reactivar" : "Aprobar", "primary");
+  save.type = "submit";
+  const footer = el("div", "inline-actions");
+  footer.append(save);
+  const modal = openModal({
+    title: `${person.estado === "rechazado" ? "Reactivar" : "Aprobar"} · ${person.nombreCompleto}`,
+    body: form,
+    footer,
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!form.reportValidity()) return;
+    save.disabled = true;
+    try {
+      await api.aprobarPracticante(person.id, Number(input.value));
+      modal.close();
+      toast(person.estado === "rechazado" ? "Practicante reactivado." : "Solicitud aprobada.", "success");
+      await loadDashboard(false);
+    } catch (problem) {
+      error.textContent = problem.message;
+      toast(problem.message, "error");
+    } finally {
+      if (save.isConnected) save.disabled = false;
+    }
+  });
+}
+
+// Pide confirmación antes de rechazar y conserva el registro en el sistema.
+async function rejectPractitioner(person) {
+  const accepted = await confirmAction({
+    title: "Rechazar solicitud",
+    message: `¿Deseas rechazar la solicitud de ${person.nombreCompleto}?`,
+    confirmText: "Rechazar",
+  });
+  if (!accepted) return;
+  try {
+    await api.rechazarPracticante(person.id);
+    toast("Solicitud rechazada.", "success");
+    await loadDashboard(false);
+  } catch (problem) {
+    toast(problem.message, "error");
   }
 }
 

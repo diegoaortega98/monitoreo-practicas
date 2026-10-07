@@ -2,6 +2,8 @@ import { state, savePreferences } from "../state.js";
 import { badge, button, debounce, el, icon, progressClass } from "../utils.js";
 import { tableSkeleton } from "../ui/skeleton.js";
 
+let practitionerStatusFilter = "all";
+
 // Construye filtros y una tabla adaptable con acciones administrativas.
 export function renderPractitioners({ practitioners, attendances = [], onAction, onNew, highlightId = "" }) {
   const section = el("section", "tab-panel");
@@ -38,7 +40,24 @@ export function renderPractitioners({ practitioners, attendances = [], onAction,
     });
   career.value = state.career;
   careerWrap.append(careerLabel, career);
-  filters.append(searchWrap, careerWrap);
+  const statusWrap = el("div", "field");
+  const statusLabel = el("label", "", "Filtrar por estado");
+  statusLabel.htmlFor = "practitioner-status-filter";
+  const statusFilter = document.createElement("select");
+  statusFilter.id = statusLabel.htmlFor;
+  [
+    ["all", "Todos"],
+    ["pendiente", "Pendientes"],
+    ["activo", "Activos"],
+    ["rechazado", "Rechazados"],
+  ].forEach(([value, label]) => {
+    const option = el("option", "", label);
+    option.value = value;
+    statusFilter.append(option);
+  });
+  statusFilter.value = practitionerStatusFilter;
+  statusWrap.append(statusLabel, statusFilter);
+  filters.append(searchWrap, careerWrap, statusWrap);
 
   const actions = el("div", "toolbar__actions");
   const addButton = button("Nuevo practicante", "primary");
@@ -64,7 +83,8 @@ export function renderPractitioners({ practitioners, attendances = [], onAction,
 
   practitioners.forEach((person) => {
     const row = el("tr");
-    const percent = person.metaHoras > 0
+    const estado = person.estado || "activo";
+    const percent = estado === "activo" && person.metaHoras > 0
       ? Math.min(100, Math.max(0, (Number(person.horasAcumuladas || 0) / Number(person.metaHoras)) * 100))
       : 0;
     const name = el("td");
@@ -80,26 +100,36 @@ export function renderPractitioners({ practitioners, attendances = [], onAction,
     semesters.dataset.priority = "low";
     const progressCell = el("td");
     progressCell.dataset.label = "Horas / meta";
-    const progress = el("div", "progress");
-    const labels = el("div", "progress__meta");
-    labels.append(
-      el("span", "", `${Number(person.horasAcumuladas || 0).toFixed(1)} h`),
-      el("span", "", `${Number(person.metaHoras).toFixed(0)} h`),
-    );
-    const track = el("div", "progress__track");
-    const fill = el("div", `progress__fill ${progressClass(percent)}`);
-    fill.style.width = `${percent}%`;
-    track.setAttribute("role", "progressbar");
-    track.setAttribute("aria-valuemin", "0");
-    track.setAttribute("aria-valuemax", "100");
-    track.setAttribute("aria-valuenow", String(Math.round(percent)));
-    track.setAttribute("aria-label", `Progreso de ${person.nombreCompleto}: ${percent.toFixed(1)} por ciento`);
-    track.append(fill);
-    progress.append(labels, track);
-    progressCell.append(progress);
+    if (estado !== "activo" || !(person.metaHoras > 0)) {
+      progressCell.textContent = "—";
+    } else {
+      const progress = el("div", "progress");
+      const labels = el("div", "progress__meta");
+      labels.append(
+        el("span", "", `${Number(person.horasAcumuladas || 0).toFixed(1)} h`),
+        el("span", "", `${Number(person.metaHoras).toFixed(0)} h`),
+      );
+      const track = el("div", "progress__track");
+      const fill = el("div", `progress__fill ${progressClass(percent)}`);
+      fill.style.width = `${percent}%`;
+      track.setAttribute("role", "progressbar");
+      track.setAttribute("aria-valuemin", "0");
+      track.setAttribute("aria-valuemax", "100");
+      track.setAttribute("aria-valuenow", String(Math.round(percent)));
+      track.setAttribute("aria-label", `Progreso de ${person.nombreCompleto}: ${percent.toFixed(1)} por ciento`);
+      track.append(fill);
+      progress.append(labels, track);
+      progressCell.append(progress);
+    }
     const status = el("td");
     status.dataset.label = "Estado";
-    status.append(badge(percent >= 100 ? "Completado" : "En práctica", percent >= 100 ? "success" : "info", "sm"));
+    if (estado === "pendiente") {
+      status.append(badge("⏳ Pendiente", "warning", "sm"));
+    } else if (estado === "rechazado") {
+      status.append(badge("❌ Rechazado", "danger", "sm"));
+    } else {
+      status.append(badge(percent >= 100 ? "Completado" : "En práctica", percent >= 100 ? "success" : "info", "sm"));
+    }
     const todayAttendance = getTodayAttendance(attendances, person.id);
     const attendanceStatus = el("td");
     attendanceStatus.dataset.label = "Asistencia hoy";
@@ -113,22 +143,41 @@ export function renderPractitioners({ practitioners, attendances = [], onAction,
     const actionCell = el("td");
     actionCell.dataset.label = "Acciones";
     const actionBar = el("div", "table-actions");
-    [
-      ["detail", "Ver detalle", "👁️"],
-      ["edit", "Editar", "✏️"],
-      ["delete", "Eliminar", "🗑️"],
-    ].forEach(([action, label, emoji]) => {
+    const rowActions = estado === "pendiente"
+      ? [
+        ["approve", "Aprobar", "✅"],
+        ["reject", "Rechazar", "❌"],
+        ["detail", "Ver detalle", "👁️"],
+        ["edit", "Editar", "✏️"],
+        ["delete", "Eliminar", "🗑️"],
+      ]
+      : estado === "rechazado"
+        ? [
+          ["approve", "Reactivar", "♻️"],
+          ["detail", "Ver detalle", "👁️"],
+          ["edit", "Editar", "✏️"],
+          ["delete", "Eliminar", "🗑️"],
+        ]
+        : [
+          ["detail", "Ver detalle", "👁️"],
+          ["edit", "Editar", "✏️"],
+          ["delete", "Eliminar", "🗑️"],
+        ];
+    rowActions.forEach(([action, label, emoji]) => {
       const actionButton = button(emoji, "ghost", "sm");
       actionButton.setAttribute("aria-label", `${label}: ${person.nombreCompleto}`);
       actionButton.title = label;
       actionButton.dataset.action = action;
       actionButton.dataset.id = person.id;
+      if (action === "approve") actionButton.style.color = "var(--color-success-600)";
+      if (action === "reject") actionButton.style.color = "var(--color-danger-600)";
       actionBar.append(actionButton);
     });
     actionCell.append(actionBar);
     row.append(name, documentCell, careerCell, semesters, progressCell, status, attendanceStatus, actionCell);
     row.dataset.name = `${person.nombreCompleto} ${person.documento}`.toLocaleLowerCase("es-CO");
     row.dataset.career = person.carrera;
+    row.dataset.status = estado;
     if (person.id === highlightId) row.classList.add("row-highlight");
     body.append(row);
     filteredRows.push(row);
@@ -151,19 +200,22 @@ export function renderPractitioners({ practitioners, attendances = [], onAction,
   const applyFilter = () => {
     const query = search.value.trim().toLocaleLowerCase("es-CO");
     const selectedCareer = career.value;
+    practitionerStatusFilter = statusFilter.value;
     state.search = query;
     state.career = selectedCareer;
     savePreferences();
     let visible = 0;
     filteredRows.forEach((row) => {
       row.hidden = !row.dataset.name.includes(query)
-        || Boolean(selectedCareer && row.dataset.career !== selectedCareer);
+        || Boolean(selectedCareer && row.dataset.career !== selectedCareer)
+        || (practitionerStatusFilter !== "all" && row.dataset.status !== practitionerStatusFilter);
       if (!row.hidden) visible += 1;
     });
     count.textContent = `${visible} resultado${visible === 1 ? "" : "s"}`;
   };
   search.addEventListener("input", debounce(applyFilter, 300));
   career.addEventListener("change", applyFilter);
+  statusFilter.addEventListener("change", applyFilter);
   wrap.addEventListener("click", (event) => {
     const actionButton = event.target.closest("[data-action]");
     if (actionButton) onAction(actionButton.dataset.action, actionButton.dataset.id);

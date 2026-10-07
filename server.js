@@ -9,7 +9,6 @@ import practicantesRouter from "./src/routes/practicantes.js";
 import adminRouter from "./src/routes/admin.js";
 import asistenciaRouter from "./src/routes/asistencia.js";
 import { inicializarAlmacenamiento } from "./src/services/storage.js";
-import { requireAdmin } from "./src/middleware/auth.js";
 
 const app = express();
 const puerto = Number(process.env.PORT) || 3000;
@@ -25,6 +24,8 @@ const rutasDisponibles = [
   "GET /api/admin/practicantes/:id (requiere administrador)",
   "PUT /api/admin/practicantes/:id (requiere administrador)",
   "DELETE /api/admin/practicantes/:id (requiere administrador)",
+  "PATCH /api/admin/practicantes/:id/aprobar (requiere administrador)",
+  "PATCH /api/admin/practicantes/:id/rechazar (requiere administrador)",
   "GET /api/admin/asistencias (requiere administrador)",
   "POST /api/admin/practicantes/:id/asistencias (requiere administrador)",
   "PATCH /api/admin/asistencias/:practicanteId/:asistenciaId (requiere administrador)",
@@ -32,12 +33,16 @@ const rutasDisponibles = [
   "POST /api/asistencia/entrada (público; requiere documento)",
   "POST /api/asistencia/salida (público; requiere documento)",
   "POST /api/practicantes (requiere administrador)",
+  "POST /api/practicantes/registro (público)",
   "GET /api/practicantes (requiere administrador)",
   "GET /api/practicantes/:id (requiere administrador)",
   "PUT /api/practicantes/:id (requiere administrador)",
   "DELETE /api/practicantes/:id (requiere administrador)",
   "POST /api/practicantes/:id/horas (requiere administrador)",
   "GET /api/practicantes/:id/progreso (requiere administrador)",
+  "POST /api/v1/practicantes/registro (público)",
+  "PATCH /api/v1/admin/practicantes/:id/aprobar (requiere administrador)",
+  "PATCH /api/v1/admin/practicantes/:id/rechazar (requiere administrador)",
 ];
 const origenesPermitidos = (process.env.CORS_ORIGINS || "")
   .split(",")
@@ -86,8 +91,10 @@ app.use("/api", (req, res, next) => {
   next();
 });
 app.use("/api/admin", adminRouter);
+app.use("/api/v1/admin", adminRouter);
 app.use("/api/asistencia", asistenciaRouter);
-app.use("/api/practicantes", requireAdmin, practicantesRouter);
+app.use("/api/practicantes", practicantesRouter);
+app.use("/api/v1/practicantes", practicantesRouter);
 
 // Responde con JSON cuando la ruta solicitada no existe.
 app.use((req, res) => {
