@@ -11,6 +11,9 @@ pendiente, visible en el panel de administración. El sistema bloquea otra
 entrada para ese documento hasta completar o corregir el movimiento.
 Para marcar la salida, el practicante debe describir las actividades realizadas;
 la descripción queda en el historial administrativo y en la exportación CSV.
+Si la página permanece abierta, muestra un recordatorio a las cinco horas de
+una entrada pendiente. Cuando el navegador lo permite, también envía una
+notificación del sistema; el permiso se solicita al marcar la entrada.
 
 ## Instalación
 
