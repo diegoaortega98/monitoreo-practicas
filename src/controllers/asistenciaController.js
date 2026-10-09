@@ -51,10 +51,13 @@ export async function marcarEntrada(req, res) {
 
 // Registra la salida abierta y suma su duración a las horas acumuladas.
 export async function marcarSalida(req, res) {
-  const { documento } = req.body || {};
+  const { documento, descripcion } = req.body || {};
   const documentoNormalizado = normalizarDocumento(documento);
   if (!documentoNormalizado) {
     throw crearError(400, "Ingresa el número de documento.");
+  }
+  if (typeof descripcion !== "string" || !descripcion.trim()) {
+    throw crearError(400, "Describe las actividades realizadas antes de marcar la salida.");
   }
 
   const resultado = await modificarPracticantes((practicantes) => {
@@ -79,6 +82,7 @@ export async function marcarSalida(req, res) {
     if (horas <= 0) throw crearError(400, "No se pudo calcular la duración de la asistencia.");
     registro.horaSalida = ahora.toISOString();
     registro.horas = horas;
+    registro.descripcion = descripcion.trim();
     registro.actualizadoEn = ahora.toISOString();
     practicante.horasAcumuladas =
       Math.round((practicante.horasAcumuladas + horas + Number.EPSILON) * 100) / 100;

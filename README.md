@@ -9,6 +9,8 @@ Vercel.
 Si una persona marca entrada y no registra salida, queda una asistencia
 pendiente, visible en el panel de administración. El sistema bloquea otra
 entrada para ese documento hasta completar o corregir el movimiento.
+Para marcar la salida, el practicante debe describir las actividades realizadas;
+la descripción queda en el historial administrativo y en la exportación CSV.
 
 ## Instalación
 
@@ -103,7 +105,7 @@ públicas y se identifican con documento.
 | `PATCH` | `/api/admin/asistencias/:practicanteId/:asistenciaId` | `requireAdmin` | `{ horaEntrada, horaSalida?, descripcion? }` | `200`: asistencia corregida y horas recalculadas. |
 | `DELETE` | `/api/admin/asistencias/:practicanteId/:asistenciaId` | `requireAdmin` | Ninguno | `204`; descuenta las horas de la asistencia. |
 | `POST` | `/api/asistencia/entrada` | Ninguno; valida documento | `{ "documento": "..." }` | `201`: movimiento abierto; salida anterior pendiente `409`. |
-| `POST` | `/api/asistencia/salida` | Ninguno; valida documento | `{ "documento": "..." }` | `200`: movimiento cerrado y duración; sin entrada pendiente `409`. |
+| `POST` | `/api/asistencia/salida` | Ninguno; valida documento y actividades | `{ "documento": "...", "descripcion": "Actividades realizadas" }` | `200`: movimiento cerrado y duración; sin entrada pendiente `409` o sin actividades `400`. |
 | `POST` | `/api/practicantes` | `requireAdmin` | Campos de practicante indicados abajo | `201`: practicante creado. |
 | `GET` | `/api/practicantes` | `requireAdmin` | Ninguno | `200`: arreglo de practicantes. |
 | `GET` | `/api/practicantes/:id` | `requireAdmin` | Ninguno | `200`: practicante. |
@@ -217,9 +219,13 @@ try {
   $_.Exception.Message
 }
 
-# Registrar salida cierra la asistencia y suma las horas transcurridas.
+# Registrar actividades es obligatorio para cerrar la asistencia.
+$salidaBody = @{
+  documento = "123456789"
+  descripcion = "Apoyo en inventario y actualización de reportes"
+} | ConvertTo-Json
 $salida = Invoke-RestMethod -Method Post -Uri "$base/api/asistencia/salida" `
-  -ContentType "application/json" -Body $marcacionBody
+  -ContentType "application/json" -Body $salidaBody
 $salida | ConvertTo-Json -Depth 5
 ```
 

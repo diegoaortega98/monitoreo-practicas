@@ -45,7 +45,7 @@ export function renderAttendances({ attendances, practitioners, onAction }) {
   const table = el("table", "data-table");
   const head = el("thead");
   const headRow = el("tr");
-  ["Fecha", "Practicante", "Entrada", "Salida", "Horas", "Estado", "Acciones"].forEach((label, index) => {
+  ["Fecha", "Practicante", "Entrada", "Salida", "Horas", "Actividades", "Estado", "Acciones"].forEach((label, index) => {
     const cell = el("th", "", label);
     cell.scope = "col";
     if (index === 3) cell.dataset.priority = "low";
@@ -67,6 +67,8 @@ export function renderAttendances({ attendances, practitioners, onAction }) {
     exit.dataset.priority = "low";
     const hours = el("td", "", `${Number(record.horas || 0).toFixed(2)} h`);
     hours.dataset.label = "Horas";
+    const activities = el("td", "", record.descripcion || "—");
+    activities.dataset.label = "Actividades";
     const statusCell = el("td");
     statusCell.dataset.label = "Estado";
     statusCell.append(badge(record.horaSalida ? "Completa" : "Pendiente", record.horaSalida ? "success" : "warning", "sm"));
@@ -87,7 +89,7 @@ export function renderAttendances({ attendances, practitioners, onAction }) {
     remove.title = "Eliminar";
     actionBar.append(edit, remove);
     actionCell.append(actionBar);
-    row.append(dateCell, person, entrance, exit, hours, statusCell, actionCell);
+    row.append(dateCell, person, entrance, exit, hours, activities, statusCell, actionCell);
     row.dataset.day = Number.isNaN(day.getTime()) ? "" : day.toISOString();
     body.append(row);
   });
