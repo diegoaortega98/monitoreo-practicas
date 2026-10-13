@@ -357,7 +357,9 @@ try {
    Reemplaza `DATABASE_URL`, `ADMIN_USER` y `ADMIN_PASSWORD` con valores
    privados. No pegues la URL real en comandos visibles o en este README.
 3. Inicializa las tablas y, si hay datos en el JSON local, impórtalos una sola
-   vez. La importación se cancela si la tabla ya tiene registros:
+   vez. La importación agrega los practicantes que no existan por documento;
+   conserva sin cambios los que ya estén en PostgreSQL. Una colisión de ID o
+   documento cancela y revierte toda la transacción:
 
    ```powershell
    npm install

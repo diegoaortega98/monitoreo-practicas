@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "../config/loadEnv.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,8 +12,10 @@ const jsonPath = path.resolve(currentDirectory, "../../data/practicantes.json");
 try {
   const contents = await fs.readFile(jsonPath, "utf8");
   const practitioners = JSON.parse(contents);
-  await importarDesdeJson(practitioners);
-  console.log(`Importación terminada: ${practitioners.length} practicante(s).`);
+  const resultado = await importarDesdeJson(practitioners);
+  console.log(
+    `Importación terminada: ${resultado.importados} agregado(s), ${resultado.omitidos} ya existente(s).`,
+  );
 } catch (error) {
   console.error("No se pudo migrar practicantes.json:", error.message);
   process.exitCode = 1;

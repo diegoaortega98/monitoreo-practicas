@@ -288,7 +288,7 @@ export async function inicializarAlmacenamiento() {
   }
 }
 
-// Inserta una copia JSON únicamente cuando PostgreSQL todavía está vacío.
+// Importa practicantes ausentes y conserva los que ya existen en PostgreSQL.
 export async function importarDesdeJson(jsonPractitioners) {
   if (!usaPostgres()) {
     const error = new Error("Configura DATABASE_URL para importar datos a PostgreSQL.");
@@ -303,15 +303,24 @@ export async function importarDesdeJson(jsonPractitioners) {
   try {
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock($1)", [721946103]);
-    const { rows } = await client.query("SELECT COUNT(*)::integer AS total FROM practicantes");
-    if (rows[0].total > 0) {
-      throw new Error("La importación se canceló: PostgreSQL ya contiene practicantes.");
-    }
+    let importados = 0;
+    let omitidos = 0;
     for (const person of jsonPractitioners) {
       if (!person.id || !person.nombreCompleto || !person.documento || !person.carrera ||
         !Number.isInteger(person.semestresCursados) ||
         ((person.estado || "activo") === "activo" && !(Number(person.metaHoras) > 0))) {
         throw new Error(`El practicante con documento ${person.documento || "(sin documento)"} no tiene datos válidos.`);
+      }
+      const existing = await client.query(
+        "SELECT id = $1::uuid AS id_matches, documento FROM practicantes WHERE id = $1 OR documento = $2",
+        [person.id, person.documento],
+      );
+      if (existing.rows.some((row) => row.id_matches && row.documento !== person.documento)) {
+        throw new Error("La importación se canceló por una colisión de identificador.");
+      }
+      if (existing.rows.some((row) => row.documento === person.documento)) {
+        omitidos++;
+        continue;
       }
       await client.query(
         `INSERT INTO practicantes (
@@ -364,10 +373,15 @@ export async function importarDesdeJson(jsonPractitioners) {
           [id, person.id, record.fecha, record.horas, record.descripcion || ""],
         );
       }
+      importados++;
     }
     await client.query("COMMIT");
+    return { importados, omitidos };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    if (error.code === "23505") {
+      throw new Error("La importación se canceló por una colisión de identificador.");
+    }
     throw error;
   } finally {
     client.release();
