@@ -85,6 +85,7 @@ export function initLanding({ onRefresh }) {
 
 function showActivitiesModal({ documento, onSubmit }) {
   const form = el("form", "form-section");
+  form.id = "attendance-activities-form";
   const wrapper = el("div", "field");
   const label = el("label", "", "Actividades realizadas");
   const description = document.createElement("textarea");
@@ -103,6 +104,7 @@ function showActivitiesModal({ documento, onSubmit }) {
 
   const submit = button("Guardar actividades y marcar salida", "primary");
   submit.type = "submit";
+  submit.setAttribute("form", form.id);
   const footer = el("div", "inline-actions");
   footer.append(submit);
   const modal = openModal({
@@ -173,6 +175,14 @@ async function submitAttendance({
     await onRefresh();
     return true;
   } catch (problem) {
+    if (action === "entrada" && problem.status === 409) {
+      const message = "Ya marcaste entrada hoy. Puedes continuar a marcar salida.";
+      feedback.classList.add("feedback--warning");
+      feedback.textContent = message;
+      feedback.hidden = false;
+      toast(message, "warning");
+      return false;
+    }
     const pending = problem.status === 409;
     feedback.classList.add(pending ? "feedback--warning" : "feedback--error");
     feedback.textContent = problem.message;
