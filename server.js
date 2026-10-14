@@ -13,6 +13,7 @@ const app = express();
 const puerto = Number(process.env.PORT) || 3000;
 const archivoActual = fileURLToPath(import.meta.url);
 const directorioPublico = path.join(path.dirname(archivoActual), "public");
+app.set("trust proxy", 1);
 const rutasDisponibles = [
   "GET /api/health (público)",
   "POST /api/admin/login (público)",

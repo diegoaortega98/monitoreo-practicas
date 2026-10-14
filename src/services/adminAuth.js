@@ -72,7 +72,9 @@ function hashToken(token) {
 
 // Lee la sesión del encabezado Cookie y descarta sesiones expiradas.
 export async function obtenerSesionAdmin(req) {
-  const token = req.cookies?.[COOKIE_NAME];
+  const authorization = req.get("authorization");
+  const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+  const token = req.cookies?.[COOKIE_NAME] || bearerToken;
   if (!token) return null;
 
   if (usaPostgres()) {
@@ -112,12 +114,12 @@ export async function cerrarSesionAdmin(req) {
 export function cookieAdmin(token, maxAgeSeconds) {
   const partes = [
     `${COOKIE_NAME}=${token}`,
-    "Path=/api",
+    "Path=/",
     "HttpOnly",
-    "SameSite=Strict",
+    "SameSite=Lax",
     `Max-Age=${maxAgeSeconds}`,
   ];
-  if (process.env.NODE_ENV === "production" || process.env.COOKIE_SECURE === "true") {
+  if (process.env.NODE_ENV === "production") {
     partes.push("Secure");
   }
   return partes.join("; ");
