@@ -4,7 +4,6 @@ import cookieParser from "cookie-parser";
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { query, usaPostgres } from "./src/services/db.js";
 import practicantesRouter from "./src/routes/practicantes.js";
 import adminRouter from "./src/routes/admin.js";
 import asistenciaRouter from "./src/routes/asistencia.js";
@@ -59,36 +58,17 @@ app.use(cors({
 }));
 app.use(cookieParser());
 app.use(express.static(directorioPublico));
-app.get("/api/health", (_req, res, next) => {
-  if (process.env.VERCEL && !usaPostgres()) {
-    res.status(503).json({
-      ok: false,
-      version: "1.0.0",
-      hora: new Date().toISOString(),
-      error: "DATABASE_URL debe configurarse para activar el almacenamiento persistente en producción.",
-      endpoints: rutasDisponibles,
-    });
-    return;
-  }
-  const verificarBase = usaPostgres() ? query("SELECT 1") : Promise.resolve();
-  verificarBase.then(() => {
-    res.json({
-      ok: true,
-      version: "1.0.0",
-      hora: new Date().toISOString(),
-      almacenamiento: usaPostgres() ? "postgresql" : "json-local",
-      endpoints: rutasDisponibles,
-    });
-  }).catch(next);
-});
 app.use("/api", (req, res, next) => {
-  if (process.env.VERCEL && !usaPostgres()) {
-    res.status(503).json({
-      error: "El almacenamiento persistente no está configurado. Agrega DATABASE_URL en Vercel.",
-    });
-    return;
-  }
-  next();
+  inicializarAlmacenamiento().then(() => next()).catch(next);
+});
+app.get("/api/health", (_req, res) => {
+  res.json({
+    ok: true,
+    version: "1.0.0",
+    hora: new Date().toISOString(),
+    almacenamiento: "postgresql",
+    endpoints: rutasDisponibles,
+  });
 });
 app.use("/api/admin", adminRouter);
 app.use("/api/v1/admin", adminRouter);

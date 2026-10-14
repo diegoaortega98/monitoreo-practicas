@@ -1,10 +1,9 @@
 # Control de Prácticas
 
 Aplicación Node.js + Express para registrar practicantes y controlar sus
-asistencias de entrada y salida. En local puede usar `data/practicantes.json`;
-al configurar `DATABASE_URL`, usa PostgreSQL y persiste también las sesiones
-administrativas. El frontend se sirve desde `public/` y puede publicarse en
-Vercel.
+asistencias de entrada y salida. MongoDB Atlas guarda practicantes, asistencias,
+registros de horas y sesiones administrativas, también cuando se despliega en
+Vercel. El frontend se sirve desde `public/`.
 
 Si una persona marca entrada y no registra salida, queda una asistencia
 pendiente, visible en el panel de administración. El sistema bloquea otra
@@ -17,7 +16,7 @@ notificación del sistema; el permiso se solicita al marcar la entrada.
 
 ## Instalación
 
-Requiere Node.js 18 o superior y npm. En PowerShell:
+Requiere Node.js 20.19.0 o superior y npm. En PowerShell:
 
 ```powershell
 Set-Location "C:\Users\diego\Desktop\control de practicas"
@@ -41,18 +40,16 @@ Remove-Item Env:ADMIN_PASSWORD -ErrorAction SilentlyContinue
 | --- | --- | --- |
 | `ADMIN_USER` | Sí para el login admin | Usuario de administración. |
 | `ADMIN_PASSWORD` | Sí para el login admin | Contraseña de administración; se verifica mediante bcryptjs. |
+| `MONGODB_URI` | Sí | URI de conexión del clúster MongoDB Atlas. |
 | `PORT` | No | Puerto HTTP; predeterminado `3000`. |
-| `DATABASE_URL` | Requerida en producción | URL de PostgreSQL de Neon; usa el endpoint pooled y SSL. Si no está definida fuera de Vercel, el servidor usa el JSON local. |
-| `PG_POOL_MAX` | No | Máximo de conexiones PostgreSQL por instancia; predeterminado `5`. |
 | `CORS_ORIGINS` | No | Orígenes externos permitidos, separados por comas. Si no se define, solo solicitudes same-origin/sin `Origin`. |
 | `COOKIE_SECURE` | No | Usa `true` para añadir `Secure` a la cookie en desarrollo. En `NODE_ENV=production` se añade automáticamente. |
 
 `.env` está excluido de Git. No publiques contraseñas ni URLs de base de datos.
 Las sesiones duran 12 horas y la cookie es `HttpOnly`, `SameSite=Strict` y
-`Path=/api`. Con PostgreSQL el token se guarda hasheado y sobrevive a cambios
-de instancia; en el fallback JSON, las sesiones viven en memoria. El login
-limita a cinco intentos fallidos por IP cada 15 minutos por instancia. La
-contraseña configurada se verifica mediante bcryptjs.
+`Path=/api`. El token de sesión se guarda hasheado en MongoDB y sobrevive a
+cambios de instancia. El login limita a cinco intentos fallidos por IP cada 15
+minutos por instancia. La contraseña configurada se verifica mediante bcryptjs.
 
 ## Arranque
 
@@ -83,7 +80,7 @@ recarga el navegador con `Ctrl+F5`.
 
 La interfaz consume las rutas disponibles. La API no ofrece recuperación de
 contraseña, cierre global de sesiones ni ajustes horarios independientes de
-asistencias. Los campos de emergencia se guardan al usar PostgreSQL.
+asistencias. Los campos de emergencia se guardan en MongoDB.
 
 ## Rutas y endpoints
 
@@ -94,7 +91,7 @@ públicas y se identifican con documento.
 
 | Método | Ruta completa | Middleware | Body esperado | Respuesta |
 | --- | --- | --- | --- | --- |
-| `GET` | `/api/health` | Ninguno | Ninguno | `200`: estado y tipo de almacenamiento; producción sin PostgreSQL `503`. |
+| `GET` | `/api/health` | Ninguno | Ninguno | `200`: estado y tipo de almacenamiento; `503` si MongoDB no está disponible. |
 | `POST` | `/api/admin/login` | Límite: 5 intentos/IP/15 min | `{ "usuario": "...", "password": "..." }` | `200`: `{ usuario, expiraEn }` y cookie `Set-Cookie`; credenciales incorrectas `401`. |
 | `GET` | `/api/admin/me` | `requireAdmin` | Ninguno | `200`: `{ usuario, expiraEn }`; sin sesión `401`. |
 | `POST` | `/api/admin/logout` | `requireAdmin` | Ninguno | `204`; expira cookie. |
@@ -329,43 +326,39 @@ try {
 
 ## Notas de persistencia y despliegue
 
-- Las escrituras al JSON se serializan y reemplazan mediante archivo temporal
-  más `rename`. El archivo local se excluye de Git para no publicar datos
-  personales.
-- Si se configura `DATABASE_URL`, `storage.js` mantiene las mismas funciones de
-  lectura/modificación, y guarda practicantes, asistencias, registros de horas
-  y sesiones administrativas en PostgreSQL. Las mutaciones se aplican en una
-  transacción serializada.
-- En Vercel se bloquea el API con HTTP 503 cuando falta `DATABASE_URL` para
-  evitar guardar datos en el filesystem efímero.
+- `storage.js` conserva las funciones usadas por los controladores y guarda
+  practicantes, asistencias y registros de horas en MongoDB. Las mutaciones y
+  la importación JSON se realizan en transacciones.
+- La conexión y su promesa se almacenan en `globalThis` para reutilizar la
+  conexión entre invocaciones calientes de Vercel.
+- Las sesiones de administración también se guardan en MongoDB; no dependen de
+  la memoria de una instancia serverless.
 - La cookie de producción incluye `Secure`. Si frontend y API se alojan en
   dominios distintos, define `CORS_ORIGINS` con el origen exacto; las cookies
   `SameSite=Strict` están pensadas para el frontend servido por este mismo
   Express.
 
-## PostgreSQL local con Neon
+## MongoDB Atlas
 
-1. Crea un proyecto en Neon y copia la URL de conexión **pooled** con SSL.
-   No incluyas esa URL en Git ni en capturas.
-2. Copia el ejemplo y edita `.env` localmente:
+1. Crea un clúster de MongoDB Atlas, un usuario de base de datos y una base de
+   datos. Configura el acceso de red para permitir las conexiones desde el
+   despliegue de Vercel.
+2. Copia la URI de conexión de la opción **Drivers** y configura `MONGODB_URI`
+   en `.env` localmente:
 
    ```powershell
-   Copy-Item .env.example .env
    code .env
    ```
 
-   Reemplaza `DATABASE_URL`, `ADMIN_USER` y `ADMIN_PASSWORD` con valores
-   privados. No pegues la URL real en comandos visibles o en este README.
-3. Inicializa las tablas y, si hay datos en el JSON local, impórtalos una sola
-   vez. La importación agrega los practicantes que no existan por documento;
-   conserva sin cambios los que ya estén en PostgreSQL. Una colisión de ID o
-   documento cancela y revierte toda la transacción:
+   Configura también `ADMIN_USER` y `ADMIN_PASSWORD`. No publiques estos
+   valores ni pegues la URI real en comandos visibles o en este README.
+3. Si hay datos en `data/practicantes.json`, impórtalos a MongoDB:
 
    ```powershell
-   npm install
-   npm run init-db
    npm run migrate-json
    ```
+   La importación agrega practicantes que todavía no existan por ID/documento,
+   conserva los existentes sin sobrescribirlos y se puede repetir.
 4. Arranca y comprueba:
 
    ```powershell
@@ -373,9 +366,8 @@ try {
    Invoke-RestMethod -Uri "http://localhost:3000/api/health"
    ```
 
-La migración mantiene intacto `data/practicantes.json`; guarda una copia de
-respaldo antes de iniciar la importación. Si no configuras `DATABASE_URL`, el
-servidor local conserva el modo JSON antiguo.
+La migración mantiene intacto `data/practicantes.json`; conserva una copia de
+respaldo antes de iniciar la importación.
 
 ## Publicar en Vercel
 
@@ -383,17 +375,13 @@ El repositorio ya contiene `api/[...path].js` para exponer la app Express a
 través de las funciones de Vercel y `vercel.json` para enrutar `/api/*`. Los
 archivos de `public/` se sirven como estáticos. Antes de desplegar:
 
-1. Inicializa el esquema con `npm run init-db` apuntando a la URL de Neon
-   destino. Ejecuta `npm run migrate-json` solo si quieres importar el JSON de
-   esta máquina.
-2. En Vercel importa el repositorio, establece la carpeta raíz del proyecto y
+1. En Vercel importa el repositorio, establece la carpeta raíz del proyecto y
    añade estas variables en **Settings → Environment Variables** para
    Production (y Preview si vas a probar previews):
-   - `DATABASE_URL`: URL pooled de Neon.
+   - `MONGODB_URI`: URI de conexión de MongoDB Atlas.
    - `ADMIN_USER`: nombre de usuario administrativo.
    - `ADMIN_PASSWORD`: clave de administración fuerte.
-   - `NODE_ENV`: `production`.
-3. Despliega desde el panel o, con Vercel CLI ya autenticado y enlazado:
+2. Despliega desde el panel o, con Vercel CLI ya autenticado y enlazado:
 
    ```powershell
    npx vercel login
@@ -401,13 +389,13 @@ archivos de `public/` se sirven como estáticos. Antes de desplegar:
    npx vercel deploy --prod
    ```
 
-4. Verifica `https://TU-DOMINIO/api/health`. La respuesta debe indicar
-   `"almacenamiento": "postgresql"`; `ok: false`/HTTP 503 significa que falta
-   configurar `DATABASE_URL`.
+3. Verifica `https://TU-DOMINIO/api/health`. La respuesta debe indicar
+   `"almacenamiento": "mongodb"` y `"ok": true`; HTTP 503 indica que falta
+   `MONGODB_URI` o que no se puede conectar al clúster.
 
-Vercel y Neon requieren cuentas y autorización externas; nunca guardes sus
-tokens o credenciales en archivos versionados. Usa el endpoint pooled de Neon
-para evitar agotar conexiones al escalar instancias serverless.
+No guardes credenciales de Atlas en archivos versionados. Codifica en URL los
+caracteres especiales que formen parte de la contraseña del usuario de base de
+datos.
 
 ## Preservar Python y sustituir `main` con Node.js
 

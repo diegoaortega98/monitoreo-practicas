@@ -1,389 +1,128 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
-import { getClient, query, usaPostgres } from "./db.js";
+import mongoose from "mongoose";
+import { conectarMongo } from "../config/db.js";
+import { Practicante } from "../models/Practicante.js";
+import { AdminSession } from "../models/AdminSession.js";
+import { query } from "./db.js";
 
-const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
-const dataFile = path.resolve(currentDirectory, "../../data/practicantes.json");
-let writeQueue = Promise.resolve();
+function crearError(status, message) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
 
-// Convierte columnas PostgreSQL al modelo camelCase usado por los controladores.
-function mapPractitioner(row, attendances, hourRecords) {
+function normalizarPracticante(practicante) {
+  const { _id, __v, ...data } = practicante;
   return {
-    id: row.id,
-    nombreCompleto: row.nombre_completo,
-    documento: row.documento,
-    carrera: row.carrera,
-    semestresCursados: row.semestres_cursados,
-    contactoEmergencia: row.contacto_emergencia || "",
-    telefono: row.telefono || "",
-    email: row.email || null,
-    metaHoras: row.meta_horas === null ? null : Number(row.meta_horas),
-    horasAcumuladas: Number(row.horas_acumuladas),
-    estado: row.estado || "activo",
-    aprobadoEn: row.aprobado_en ? new Date(row.aprobado_en).toISOString() : null,
-    aprobadoPor: row.aprobado_por || null,
-    registrosHoras: hourRecords.get(row.id) || [],
-    registrosAsistencia: attendances.get(row.id) || [],
-    creadoEn: new Date(row.creado_en).toISOString(),
-    actualizadoEn: new Date(row.actualizado_en).toISOString(),
+    ...data,
+    contactoEmergencia: data.contactoEmergencia || "",
+    telefono: data.telefono || "",
+    email: data.email || null,
+    metaHoras: data.metaHoras ?? null,
+    horasAcumuladas: Number(data.horasAcumuladas || 0),
+    estado: data.estado || "activo",
+    aprobadoEn: data.aprobadoEn || null,
+    aprobadoPor: data.aprobadoPor || null,
+    registrosHoras: data.registrosHoras || [],
+    registrosAsistencia: data.registrosAsistencia || [],
   };
 }
 
-// Lee tablas principales y relaciones en un número fijo de consultas.
-async function readPostgresPractitioners(client = null) {
-  const run = (sql, params = []) => client ? client.query(sql, params) : query(sql, params);
-  const [practitionersResult, attendanceResult, hoursResult] = await Promise.all([
-    run("SELECT * FROM practicantes ORDER BY creado_en, id"),
-    run("SELECT * FROM asistencias ORDER BY hora_entrada, id"),
-    run("SELECT * FROM registros_horas ORDER BY fecha, id"),
-  ]);
-
-  const attendances = new Map();
-  attendanceResult.rows.forEach((row) => {
-    const list = attendances.get(row.practicante_id) || [];
-    list.push({
-      id: row.id,
-      horaEntrada: new Date(row.hora_entrada).toISOString(),
-      horaSalida: row.hora_salida ? new Date(row.hora_salida).toISOString() : null,
-      horas: Number(row.horas),
-      descripcion: row.descripcion || "",
-      tipo: row.tipo || "normal",
-      ajustadoPor: row.ajustado_por || null,
-      creadoEn: new Date(row.creado_en).toISOString(),
-      actualizadoEn: new Date(row.actualizado_en).toISOString(),
-    });
-    attendances.set(row.practicante_id, list);
-  });
-
-  const hourRecords = new Map();
-  hoursResult.rows.forEach((row) => {
-    const list = hourRecords.get(row.practicante_id) || [];
-    list.push({
-      fecha: new Date(row.fecha).toISOString(),
-      horas: Number(row.horas),
-      descripcion: row.descripcion || "",
-    });
-    hourRecords.set(row.practicante_id, list);
-  });
-
-  return practitionersResult.rows.map((row) => mapPractitioner(row, attendances, hourRecords));
-}
-
-// Lee practicantes desde Neon o conserva el modo JSON para desarrollo local.
+// Conserva el mismo modelo camelCase que consumen los controladores.
 export async function leerPracticantes() {
-  if (usaPostgres()) return readPostgresPractitioners();
-  await writeQueue;
-  const contents = await fs.readFile(dataFile, "utf8");
-  const practitioners = JSON.parse(contents);
-  if (!Array.isArray(practitioners)) {
-    throw new Error("data/practicantes.json debe contener un arreglo JSON.");
-  }
-  return practitioners;
+  await conectarMongo();
+  const practitioners = await Practicante.find({})
+    .sort({ creadoEn: 1, id: 1 })
+    .lean();
+  return practitioners.map(normalizarPracticante);
 }
 
-// Sincroniza la lista modificada dentro de una transacción serializada en PostgreSQL.
-async function modifyPostgresPractitioners(modify) {
-  const client = await getClient();
-  let lockAdquirido = false;
+// Mantiene el contrato basado en una lista mutable con escrituras transaccionales.
+export async function modificarPracticantes(modify) {
+  await conectarMongo();
+  const session = await mongoose.startSession();
+  let result;
   try {
-    await client.query("SELECT pg_advisory_lock($1)", [721946103]);
-    lockAdquirido = true;
-    const practitioners = await readPostgresPractitioners(client);
-    const result = modify(practitioners);
-    const ids = practitioners.map((person) => person.id);
-
-    await client.query("BEGIN");
-    try {
-      if (ids.length) {
-        await client.query("DELETE FROM practicantes WHERE NOT (id = ANY($1::uuid[]))", [ids]);
-      } else {
-        await client.query("DELETE FROM practicantes");
+    await session.withTransaction(async () => {
+      const practitioners = (await Practicante.find({}).session(session).lean())
+        .map(normalizarPracticante);
+      result = modify(practitioners);
+      if (result && typeof result.then === "function") {
+        throw new TypeError("La modificación de practicantes debe ser síncrona.");
       }
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
-      throw error;
-    }
 
-    await client.query("BEGIN");
-    for (const person of practitioners) {
-      await client.query(
-        `INSERT INTO practicantes (
-          id, nombre_completo, documento, carrera, semestres_cursados,
-          contacto_emergencia, telefono, email, meta_horas, horas_acumuladas,
-          estado, aprobado_en, aprobado_por, creado_en, actualizado_en
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-        ON CONFLICT (id) DO UPDATE SET
-          nombre_completo = EXCLUDED.nombre_completo,
-          documento = EXCLUDED.documento,
-          carrera = EXCLUDED.carrera,
-          semestres_cursados = EXCLUDED.semestres_cursados,
-          contacto_emergencia = EXCLUDED.contacto_emergencia,
-          telefono = EXCLUDED.telefono,
-          email = EXCLUDED.email,
-          meta_horas = EXCLUDED.meta_horas,
-          horas_acumuladas = EXCLUDED.horas_acumuladas,
-          estado = EXCLUDED.estado,
-          aprobado_en = EXCLUDED.aprobado_en,
-          aprobado_por = EXCLUDED.aprobado_por,
-          actualizado_en = EXCLUDED.actualizado_en`,
-        [
-          person.id,
-          person.nombreCompleto,
-          person.documento,
-          person.carrera,
-          person.semestresCursados,
-          person.contactoEmergencia || null,
-          person.telefono || null,
-          person.email || null,
-          person.metaHoras,
-          person.horasAcumuladas || 0,
-          person.estado || "activo",
-          person.aprobadoEn || null,
-          person.aprobadoPor || null,
-          person.creadoEn || new Date(),
-          person.actualizadoEn || new Date(),
-        ],
-      );
-    }
-
-    if (ids.length) {
-      await client.query("DELETE FROM asistencias WHERE practicante_id = ANY($1::uuid[])", [ids]);
-      await client.query("DELETE FROM registros_horas WHERE practicante_id = ANY($1::uuid[])", [ids]);
-    }
-    for (const person of practitioners) {
-      for (const record of person.registrosAsistencia || []) {
-        await client.query(
-          `INSERT INTO asistencias (
-            id, practicante_id, hora_entrada, hora_salida, horas, descripcion,
-            tipo, ajustado_por, creado_en, actualizado_en
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-          [
-            record.id || randomUUID(),
-            person.id,
-            record.horaEntrada,
-            record.horaSalida || null,
-            record.horas || 0,
-            record.descripcion || "",
-            record.tipo || "normal",
-            record.ajustadoPor || null,
-            record.creadoEn || new Date(),
-            record.actualizadoEn || new Date(),
-          ],
-        );
+      await Practicante.deleteMany({}, { session });
+      if (practitioners.length) {
+        await Practicante.insertMany(practitioners, { session, ordered: true });
       }
-      for (const record of person.registrosHoras || []) {
-        await client.query(
-          `INSERT INTO registros_horas (id, practicante_id, fecha, horas, descripcion)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [
-            record.id || randomUUID(),
-            person.id,
-            record.fecha,
-            record.horas,
-            record.descripcion || "",
-          ],
-        );
-      }
-    }
-
-    await client.query("COMMIT");
+    });
     return result;
   } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
-    if (error.code === "42703") {
-      const migrationError = new Error(
-        "La base de datos no está migrada. Ejecuta 'npm run init-db' para actualizar el esquema.",
-      );
-      migrationError.status = 503;
-      migrationError.exposeMessage = true;
-      throw migrationError;
-    }
-    if (error.code === "23505") {
+    if (error.code === 11000) {
       error.status = 409;
       error.message = "Ya existe un practicante con ese documento.";
     }
     throw error;
   } finally {
-    if (lockAdquirido) {
-      try {
-        await client.query("SELECT pg_advisory_unlock($1)", [721946103]);
-      } catch (error) {
-        client.release(error);
-        throw error;
-      }
-    }
-    client.release();
+    await session.endSession();
   }
 }
 
-// Ejecuta una modificación atómica sin cambiar la interfaz usada por controladores.
-export function modificarPracticantes(modify) {
-  if (usaPostgres()) return modifyPostgresPractitioners(modify);
-
-  const operation = writeQueue.then(async () => {
-    const contents = await fs.readFile(dataFile, "utf8");
-    const practitioners = JSON.parse(contents);
-    if (!Array.isArray(practitioners)) {
-      throw new Error("data/practicantes.json debe contener un arreglo JSON.");
-    }
-    const result = modify(practitioners);
-    const temporaryFile = `${dataFile}.${process.pid}.${Date.now()}.tmp`;
-    await fs.writeFile(temporaryFile, `${JSON.stringify(practitioners, null, 2)}\n`, "utf8");
-    await fs.rename(temporaryFile, dataFile);
-    return result;
-  });
-  writeQueue = operation.then(() => undefined, () => undefined);
-  return operation;
-}
-
-// Elimina un practicante directamente en PostgreSQL y deja que CASCADE borre sus registros.
+// Elimina un practicante directamente cuando un controlador usa esta operación.
 export async function eliminarPracticantePorId(id) {
-  const client = await getClient();
-  let releaseError;
-  try {
-    await client.query("BEGIN");
-    const result = await client.query(
-      "DELETE FROM practicantes WHERE id = $1::uuid",
-      [id],
-    );
-    if (result.rowCount === 0) {
-      const error = new Error("No se encontró el practicante.");
-      error.status = 404;
-      throw error;
-    }
-    await client.query("COMMIT");
-  } catch (error) {
-    try {
-      await client.query("ROLLBACK");
-    } catch (rollbackError) {
-      releaseError = rollbackError;
-      console.error("No se pudo revertir la eliminación del practicante:", {
-        code: rollbackError.code,
-        message: rollbackError.message,
-      });
-    }
-    throw error;
-  } finally {
-    client.release(releaseError);
+  await conectarMongo();
+  const result = await Practicante.deleteOne({ id });
+  if (result.deletedCount === 0) {
+    throw crearError(404, "No se encontró el practicante.");
   }
 }
 
-// Prepara el almacenamiento local JSON o verifica la conectividad con PostgreSQL.
+// Verifica la conexión PostgreSQL antes de atender solicitudes.
 export async function inicializarAlmacenamiento() {
-  if (usaPostgres()) {
-    await query("SELECT 1");
-    return;
-  }
-
-  const dataDirectory = path.dirname(dataFile);
-  await fs.mkdir(dataDirectory, { recursive: true });
-  try {
-    await fs.access(dataFile);
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-    await fs.writeFile(dataFile, "[]\n", { encoding: "utf8", flag: "wx" });
-  }
+  await query("SELECT 1;");
 }
 
-// Importa practicantes ausentes y conserva los que ya existen en PostgreSQL.
+// Importa practicantes que no existan y conserva los documentos ya guardados.
 export async function importarDesdeJson(jsonPractitioners) {
-  if (!usaPostgres()) {
-    const error = new Error("Configura DATABASE_URL para importar datos a PostgreSQL.");
-    error.status = 503;
-    throw error;
-  }
   if (!Array.isArray(jsonPractitioners)) {
     throw new TypeError("El archivo de importación debe contener un arreglo JSON.");
   }
+  await inicializarAlmacenamiento();
 
-  const client = await getClient();
+  const session = await mongoose.startSession();
+  let importados = 0;
+  let omitidos = 0;
   try {
-    await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock($1)", [721946103]);
-    let importados = 0;
-    let omitidos = 0;
-    for (const person of jsonPractitioners) {
-      if (!person.id || !person.nombreCompleto || !person.documento || !person.carrera ||
-        !Number.isInteger(person.semestresCursados) ||
-        ((person.estado || "activo") === "activo" && !(Number(person.metaHoras) > 0))) {
-        throw new Error(`El practicante con documento ${person.documento || "(sin documento)"} no tiene datos válidos.`);
+    await session.withTransaction(async () => {
+      importados = 0;
+      omitidos = 0;
+      for (const person of jsonPractitioners) {
+        if (!person.id || !person.nombreCompleto || !person.documento || !person.carrera ||
+          !Number.isInteger(person.semestresCursados) ||
+          ((person.estado || "activo") === "activo" && !(Number(person.metaHoras) > 0))) {
+          throw new Error(
+            `El practicante con documento ${person.documento || "(sin documento)"} no tiene datos válidos.`,
+          );
+        }
+
+        const existingById = await Practicante.findOne({ id: person.id })
+          .session(session)
+          .lean();
+        if (existingById && existingById.documento !== person.documento) {
+          throw new Error("La importación se canceló por una colisión de identificador.");
+        }
+        const existingByDocument = await Practicante.findOne({ documento: person.documento })
+          .session(session)
+          .lean();
+        if (existingByDocument) {
+          omitidos++;
+          continue;
+        }
+        await Practicante.create([person], { session });
+        importados++;
       }
-      const existing = await client.query(
-        "SELECT id = $1::uuid AS id_matches, documento FROM practicantes WHERE id = $1 OR documento = $2",
-        [person.id, person.documento],
-      );
-      if (existing.rows.some((row) => row.id_matches && row.documento !== person.documento)) {
-        throw new Error("La importación se canceló por una colisión de identificador.");
-      }
-      if (existing.rows.some((row) => row.documento === person.documento)) {
-        omitidos++;
-        continue;
-      }
-      await client.query(
-        `INSERT INTO practicantes (
-          id, nombre_completo, documento, carrera, semestres_cursados,
-          contacto_emergencia, telefono, email, meta_horas, horas_acumuladas,
-          estado, aprobado_en, aprobado_por, creado_en, actualizado_en
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-        [
-          person.id,
-          person.nombreCompleto,
-          person.documento,
-          person.carrera,
-          person.semestresCursados,
-          person.contactoEmergencia || null,
-          person.telefono || null,
-          person.email || null,
-          person.metaHoras,
-          person.horasAcumuladas || 0,
-          person.estado || "activo",
-          person.aprobadoEn || null,
-          person.aprobadoPor || null,
-          person.creadoEn || new Date(),
-          person.actualizadoEn || new Date(),
-        ],
-      );
-      for (const record of person.registrosAsistencia || []) {
-        await client.query(
-          `INSERT INTO asistencias (
-            id, practicante_id, hora_entrada, hora_salida, horas, descripcion,
-            tipo, ajustado_por, creado_en, actualizado_en
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-          [
-            record.id || randomUUID(),
-            person.id,
-            record.horaEntrada,
-            record.horaSalida || null,
-            record.horas || 0,
-            record.descripcion || "",
-            record.tipo || "normal",
-            record.ajustadoPor || null,
-            record.creadoEn || new Date(),
-            record.actualizadoEn || new Date(),
-          ],
-        );
-      }
-      for (const record of person.registrosHoras || []) {
-        const id = record.id || randomUUID();
-        await client.query(
-          "INSERT INTO registros_horas (id, practicante_id, fecha, horas, descripcion) VALUES ($1,$2,$3,$4,$5)",
-          [id, person.id, record.fecha, record.horas, record.descripcion || ""],
-        );
-      }
-      importados++;
-    }
-    await client.query("COMMIT");
+    });
     return { importados, omitidos };
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
-    if (error.code === "23505") {
-      throw new Error("La importación se canceló por una colisión de identificador.");
-    }
-    throw error;
   } finally {
-    client.release();
+    await session.endSession();
   }
 }
