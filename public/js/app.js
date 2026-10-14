@@ -26,6 +26,7 @@ let editingId = "";
 let highlightId = "";
 let pageLoaded = false;
 let dashboardLoading = false;
+const ADMIN_SESSION_MARKER = "control-practicas-admin-session";
 
 // Conecta los módulos de interfaz y recupera una sesión administrativa existente.
 async function bootstrap() {
@@ -42,16 +43,20 @@ async function bootstrap() {
   window.addEventListener("hashchange", handleHashChange);
   window.addEventListener("error", showErrorBoundary);
   window.addEventListener("unhandledrejection", showErrorBoundary);
-  try {
-    const session = await api.me();
-    handleAuthenticated(session);
-  } catch (error) {
-    if (error.status !== 401) toast(error.message, "error");
-    showLanding();
+  if (sessionStorage.getItem(ADMIN_SESSION_MARKER) === "true") {
+    try {
+      const session = await api.me();
+      handleAuthenticated(session);
+    } catch (error) {
+      sessionStorage.removeItem(ADMIN_SESSION_MARKER);
+      if (error.status !== 401) toast(error.message, "error");
+      showLanding();
+    }
   }
 }
 
 async function handleAuthenticated(session) {
+  sessionStorage.setItem(ADMIN_SESSION_MARKER, "true");
   state.user = session.usuario || "Administrador";
   state.expiresAt = session.expiraEn || null;
   updateHeaderUser(state.user, state.expiresAt);
@@ -64,6 +69,7 @@ async function handleAuthenticated(session) {
 async function logout() {
   try {
     await api.logout();
+    sessionStorage.removeItem(ADMIN_SESSION_MARKER);
     state.user = null;
     state.expiresAt = null;
     state.practitioners = [];
