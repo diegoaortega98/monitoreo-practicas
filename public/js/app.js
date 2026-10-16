@@ -12,6 +12,7 @@ import {
   renderPractitioners,
 } from "./components/practicantes.js";
 import { renderAttendances } from "./components/asistencias.js";
+import { renderActivities } from "./components/actividades.js";
 import { renderSettings } from "./components/ajustes.js";
 import { confirmAction } from "./ui/confirm.js";
 import { openModal } from "./ui/modal.js";
@@ -74,6 +75,7 @@ async function logout() {
     state.expiresAt = null;
     state.practitioners = [];
     state.attendances = [];
+    state.activities = [];
     updateHeaderUser(null);
     showLanding();
     toast("Sesión cerrada.", "success");
@@ -96,12 +98,14 @@ async function loadDashboard(showLoading) {
     pageLoaded = false;
   }
   try {
-    const [practitioners, attendances] = await Promise.all([
+    const [practitioners, attendances, activities] = await Promise.all([
       api.practitioners(),
       api.attendances(),
+      api.activities(),
     ]);
     state.practitioners = practitioners;
     state.attendances = attendances;
+    state.activities = activities;
     pageLoaded = true;
     renderStats();
     renderCurrentTab();
@@ -147,10 +151,70 @@ function renderCurrentTab() {
       practitioners: state.practitioners,
       onAction: handleAttendanceAction,
     }));
+  } else if (state.tab === "actividades") {
+    dashboardContent.replaceChildren(renderActivities({
+      activities: state.activities,
+      onReview: handleActivityReview,
+    }));
   } else if (state.tab === "agregar") {
     dashboardContent.replaceChildren(renderAddTab());
   } else {
     dashboardContent.replaceChildren(renderSettings());
+  }
+}
+
+async function handleActivityReview(activity, status) {
+  if (status === "observada") {
+    const form = el("form", "form-section");
+    form.id = "activity-review-form";
+    const field = el("div", "field");
+    const label = el("label", "", "Comentario para el practicante");
+    const input = document.createElement("textarea");
+    input.rows = 4;
+    input.required = true;
+    input.maxLength = 1000;
+    input.placeholder = "Describe la observación o recomendación para el practicante.";
+    label.append(input);
+    field.append(label);
+    form.append(field);
+    const save = button("Enviar observación", "primary");
+    save.type = "submit";
+    save.setAttribute("form", form.id);
+    const footer = el("div", "inline-actions");
+    footer.append(save);
+    const saved = await new Promise((resolve) => {
+      const modal = openModal({
+        title: `Observar actividad · ${activity.nombreCompleto}`,
+        body: form,
+        footer,
+        onClose: () => resolve(false),
+      });
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!form.reportValidity() || !input.value.trim()) return;
+        save.disabled = true;
+        try {
+          await api.reviewActivity(activity.id, { estado: status, comentario: input.value.trim() });
+          resolve(true);
+          modal.close();
+        } catch (error) {
+          toast(error.message, "error");
+          save.disabled = false;
+        }
+      });
+    });
+    if (!saved) return;
+    await loadDashboard(true);
+    toast("Actividad observada.", "success");
+    return;
+  }
+
+  try {
+    await api.reviewActivity(activity.id, { estado: status, comentario: "" });
+    await loadDashboard(true);
+    toast("Actividad aprobada.", "success");
+  } catch (error) {
+    toast(error.message, "error");
   }
 }
 
@@ -337,6 +401,7 @@ function showPractitionerDetail(person) {
 
 function showHoursAdjustment(person) {
   const form = el("form", "form-section");
+  form.id = "adjustment-form";
   const hours = el("div", "field");
   const hoursLabel = el("label", "", "Horas a agregar");
   hoursLabel.htmlFor = "adjustment-hours";
@@ -354,6 +419,7 @@ function showHoursAdjustment(person) {
   form.append(hours, reason.wrapper, error);
   const save = button("Guardar ajuste", "primary");
   save.type = "submit";
+  save.setAttribute("form", form.id);
   const footer = el("div", "inline-actions");
   footer.append(save);
   const modal = openModal({ title: `Ajustar horas · ${person.nombreCompleto}`, body: form, footer });
@@ -409,6 +475,7 @@ function handleAttendanceAction(action, practitionerId, attendanceId) {
 
 function showAttendanceEditor(record) {
   const form = el("form", "form-section");
+  form.id = "attendance-edit-form";
   const grid = el("div", "form-grid form-grid--2");
   const entry = datetimeField("edit-entry", "Hora de entrada", record.horaEntrada, true);
   const exit = datetimeField("edit-exit", "Hora de salida", record.horaSalida, false);
@@ -430,6 +497,7 @@ function showAttendanceEditor(record) {
   form.append(grid, note, error);
   const save = button("Guardar corrección", "primary");
   save.type = "submit";
+  save.setAttribute("form", form.id);
   const footer = el("div", "inline-actions");
   footer.append(save);
   const modal = openModal({ title: `Corregir asistencia · ${record.nombreCompleto}`, body: form, footer, className: "modal--wide" });
@@ -479,6 +547,7 @@ async function deleteAttendance(record) {
 
 function showManualAttendance(person) {
   const form = el("form", "form-section");
+  form.id = "manual-attendance-form";
   const grid = el("div", "form-grid form-grid--2");
   const entry = datetimeField("manual-entry", "Hora de entrada", new Date().toISOString(), true);
   const exit = datetimeField("manual-exit", "Hora de salida (opcional)", "", false);
@@ -490,6 +559,7 @@ function showManualAttendance(person) {
   form.append(grid, note, error);
   const save = button("Guardar asistencia", "primary");
   save.type = "submit";
+  save.setAttribute("form", form.id);
   const footer = el("div", "inline-actions");
   footer.append(save);
   const modal = openModal({ title: `Asistencia manual · ${person.nombreCompleto}`, body: form, footer });

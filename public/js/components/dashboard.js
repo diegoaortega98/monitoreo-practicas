@@ -1,7 +1,7 @@
 import { state } from "../state.js";
 import { el } from "../utils.js";
 
-const tabs = ["practicantes", "asistencias", "agregar", "ajustes"];
+const tabs = ["practicantes", "asistencias", "actividades", "agregar", "ajustes"];
 
 // Actualiza contadores derivados de las listas de practicantes y asistencias.
 export function renderStats() {

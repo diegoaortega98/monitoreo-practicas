@@ -1,15 +1,18 @@
 # Control de Prácticas
 
 Aplicación Node.js + Express para registrar practicantes y controlar sus
-asistencias de entrada y salida. MongoDB Atlas guarda practicantes, asistencias,
-registros de horas y sesiones administrativas, también cuando se despliega en
-Vercel. El frontend se sirve desde `public/`.
+asistencias de entrada y salida. PostgreSQL guarda practicantes, asistencias,
+actividades, evidencias y sesiones administrativas. El frontend se sirve desde
+`public/`.
 
 Si una persona marca entrada y no registra salida, queda una asistencia
 pendiente, visible en el panel de administración. El sistema bloquea otra
 entrada para ese documento hasta completar o corregir el movimiento.
-Para marcar la salida, el practicante debe describir las actividades realizadas;
-la descripción queda en el historial administrativo y en la exportación CSV.
+Durante una jornada abierta, el practicante puede guardar actividades por
+separado y adjuntar fotos o videos almacenados en Cloudinary. Al enviar las
+actividades se marca también la salida y se contabilizan las horas, sin esperar
+la aprobación del administrador. El panel incluye una sección para aprobar u
+observar cada actividad enviada.
 Si la página permanece abierta, muestra un recordatorio a las cinco horas de
 una entrada pendiente. Cuando el navegador lo permite, también envía una
 notificación del sistema; el permiso se solicita al marcar la entrada.
@@ -40,14 +43,17 @@ Remove-Item Env:ADMIN_PASSWORD -ErrorAction SilentlyContinue
 | --- | --- | --- |
 | `ADMIN_USER` | Sí para el login admin | Usuario de administración. |
 | `ADMIN_PASSWORD` | Sí para el login admin | Contraseña de administración; se verifica mediante bcryptjs. |
-| `MONGODB_URI` | Sí | URI de conexión del clúster MongoDB Atlas. |
+| `DATABASE_URL` | Sí | URI de conexión PostgreSQL. |
+| `CLOUDINARY_CLOUD_NAME` | Sí para cargar evidencias | Nombre del cloud de Cloudinary. |
+| `CLOUDINARY_API_KEY` | Sí para cargar evidencias | API key de Cloudinary. |
+| `CLOUDINARY_API_SECRET` | Sí para cargar evidencias | Se usa solo en el servidor para firmar cargas; nunca la publiques en el frontend. |
 | `PORT` | No | Puerto HTTP; predeterminado `3000`. |
 | `CORS_ORIGINS` | No | Orígenes externos permitidos, separados por comas. Si no se define, solo solicitudes same-origin/sin `Origin`. |
 | `COOKIE_SECURE` | No | Usa `true` para añadir `Secure` a la cookie en desarrollo. En `NODE_ENV=production` se añade automáticamente. |
 
 `.env` está excluido de Git. No publiques contraseñas ni URLs de base de datos.
-Las sesiones duran 12 horas y la cookie es `HttpOnly`, `SameSite=Strict` y
-`Path=/api`. El token de sesión se guarda hasheado en MongoDB y sobrevive a
+Las sesiones duran 12 horas y la cookie es `HttpOnly`, `SameSite=Lax` y
+`Path=/`. El token de sesión se guarda hasheado en PostgreSQL y sobrevive a
 cambios de instancia. El login limita a cinco intentos fallidos por IP cada 15
 minutos por instancia. La contraseña configurada se verifica mediante bcryptjs.
 
@@ -70,6 +76,12 @@ Para iniciar sin modo watch:
 npm start
 ```
 
+Tras actualizar el esquema, aplica los cambios con `npm run init-db`. Las cargas
+se hacen desde el navegador directamente a Cloudinary mediante firmas emitidas
+por el servidor. Se aceptan hasta 10 evidencias por actividad; fotos de hasta
+10 MB y videos de hasta 100 MB cada uno. Los formatos permitidos son JPEG, PNG,
+WebP, GIF, MP4, WebM y MOV.
+
 ## Interfaz web
 
 El frontend vanilla se sirve desde `public/` en la raíz del servidor. La
@@ -80,7 +92,7 @@ recarga el navegador con `Ctrl+F5`.
 
 La interfaz consume las rutas disponibles. La API no ofrece recuperación de
 contraseña, cierre global de sesiones ni ajustes horarios independientes de
-asistencias. Los campos de emergencia se guardan en MongoDB.
+asistencias. Los campos de emergencia se guardan en PostgreSQL.
 
 ## Rutas y endpoints
 
@@ -91,7 +103,7 @@ públicas y se identifican con documento.
 
 | Método | Ruta completa | Middleware | Body esperado | Respuesta |
 | --- | --- | --- | --- | --- |
-| `GET` | `/api/health` | Ninguno | Ninguno | `200`: estado y tipo de almacenamiento; `503` si MongoDB no está disponible. |
+| `GET` | `/api/health` | Ninguno | Ninguno | `200`: estado y tipo de almacenamiento; `503` si PostgreSQL no está disponible. |
 | `POST` | `/api/admin/login` | Límite: 5 intentos/IP/15 min | `{ "usuario": "...", "password": "..." }` | `200`: `{ usuario, expiraEn }` y cookie `Set-Cookie`; credenciales incorrectas `401`. |
 | `GET` | `/api/admin/me` | `requireAdmin` | Ninguno | `200`: `{ usuario, expiraEn }`; sin sesión `401`. |
 | `POST` | `/api/admin/logout` | `requireAdmin` | Ninguno | `204`; expira cookie. |
@@ -105,7 +117,14 @@ públicas y se identifican con documento.
 | `PATCH` | `/api/admin/asistencias/:practicanteId/:asistenciaId` | `requireAdmin` | `{ horaEntrada, horaSalida?, descripcion? }` | `200`: asistencia corregida y horas recalculadas. |
 | `DELETE` | `/api/admin/asistencias/:practicanteId/:asistenciaId` | `requireAdmin` | Ninguno | `204`; descuenta las horas de la asistencia. |
 | `POST` | `/api/asistencia/entrada` | Ninguno; valida documento | `{ "documento": "..." }` | `201`: movimiento abierto; salida anterior pendiente `409`. |
-| `POST` | `/api/asistencia/salida` | Ninguno; valida documento y actividades | `{ "documento": "...", "descripcion": "Actividades realizadas" }` | `200`: movimiento cerrado y duración; sin entrada pendiente `409` o sin actividades `400`. |
+| `GET` | `/api/asistencia/jornada?documento=...` | Ninguno; valida documento | Documento en query | `200`: jornada abierta y borradores; `null` si no hay entrada pendiente. |
+| `POST` | `/api/asistencia/actividades` | Ninguno; valida documento | `{ documento, descripcion }` | `201`: nueva actividad en borrador. |
+| `PUT` | `/api/asistencia/actividades/:id` | Ninguno; valida documento | `{ documento, descripcion }` | `200`: actividad actualizada mientras la jornada está abierta. |
+| `POST` | `/api/asistencia/actividades/:id/evidencias/firma` | Ninguno; valida documento | `{ documento, resourceType }` | `200`: parámetros firmados para cargar a Cloudinary. |
+| `POST` | `/api/asistencia/actividades/:id/evidencias` | Ninguno; valida documento y verifica con Cloudinary | `{ documento, publicId, resourceType, nombre }` | `201`: evidencia validada y vinculada a la actividad. |
+| `POST` | `/api/asistencia/salida` | Ninguno; valida documento y actividades | `{ "documento": "..." }` | `200`: envía actividades pendientes y cierra la jornada en una transacción; exige al menos una actividad. |
+| `GET` | `/api/admin/actividades` | `requireAdmin` | Ninguno | `200`: actividades enviadas con estado y evidencias. |
+| `PATCH` | `/api/admin/actividades/:id/revision` | `requireAdmin` | `{ estado, comentario }` donde estado es `aprobada` u `observada` | `200`: actividad revisada; comentario obligatorio para observar. |
 | `POST` | `/api/practicantes` | `requireAdmin` | Campos de practicante indicados abajo | `201`: practicante creado. |
 | `GET` | `/api/practicantes` | `requireAdmin` | Ninguno | `200`: arreglo de practicantes. |
 | `GET` | `/api/practicantes/:id` | `requireAdmin` | Ninguno | `200`: practicante. |
@@ -219,10 +238,17 @@ try {
   $_.Exception.Message
 }
 
-# Registrar actividades es obligatorio para cerrar la asistencia.
-$salidaBody = @{
+# Cada actividad se guarda mientras la jornada permanece abierta.
+$actividadBody = @{
   documento = "123456789"
   descripcion = "Apoyo en inventario y actualización de reportes"
+} | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "$base/api/asistencia/actividades" `
+  -ContentType "application/json" -Body $actividadBody
+
+# Enviar las actividades y cerrar la asistencia en una sola operación.
+$salidaBody = @{
+  documento = "123456789"
 } | ConvertTo-Json
 $salida = Invoke-RestMethod -Method Post -Uri "$base/api/asistencia/salida" `
   -ContentType "application/json" -Body $salidaBody
@@ -324,52 +350,25 @@ try {
 }
 ```
 
-## Notas de persistencia y despliegue
+## Persistencia, Cloudinary y despliegue
 
-- `storage.js` conserva las funciones usadas por los controladores y guarda
-  practicantes, asistencias y registros de horas en MongoDB. Las mutaciones y
-  la importación JSON se realizan en transacciones.
-- La conexión y su promesa se almacenan en `globalThis` para reutilizar la
-  conexión entre invocaciones calientes de Vercel.
-- Las sesiones de administración también se guardan en MongoDB; no dependen de
-  la memoria de una instancia serverless.
+- PostgreSQL almacena practicantes, asistencias, actividades, evidencias y
+  sesiones administrativas. El cierre de jornada, el envío de actividades y el
+  abono de horas se realizan juntos en una transacción.
+- Aplica el esquema actualizado con `npm run init-db`. Si hay datos en
+  `data/practicantes.json`, `npm run migrate-json` los importa sin borrar el
+  archivo de origen.
+- Crea una cuenta de Cloudinary y configura `CLOUDINARY_CLOUD_NAME`,
+  `CLOUDINARY_API_KEY` y `CLOUDINARY_API_SECRET` en el entorno del servidor.
+  Las cargas se firman en backend y se envían desde el navegador a Cloudinary;
+  la API secret nunca se envía al cliente.
+- Se permiten hasta 10 evidencias por actividad; fotos de hasta 10 MB y videos
+  de hasta 100 MB cada uno. Los formatos aceptados son JPEG, PNG, WebP, GIF,
+  MP4, WebM y MOV.
 - La cookie de producción incluye `Secure`. Si frontend y API se alojan en
-  dominios distintos, define `CORS_ORIGINS` con el origen exacto; las cookies
-  `SameSite=Strict` están pensadas para el frontend servido por este mismo
-  Express.
+  dominios distintos, define `CORS_ORIGINS` con el origen exacto.
 
-## MongoDB Atlas
-
-1. Crea un clúster de MongoDB Atlas, un usuario de base de datos y una base de
-   datos. Configura el acceso de red para permitir las conexiones desde el
-   despliegue de Vercel.
-2. Copia la URI de conexión de la opción **Drivers** y configura `MONGODB_URI`
-   en `.env` localmente:
-
-   ```powershell
-   code .env
-   ```
-
-   Configura también `ADMIN_USER` y `ADMIN_PASSWORD`. No publiques estos
-   valores ni pegues la URI real en comandos visibles o en este README.
-3. Si hay datos en `data/practicantes.json`, impórtalos a MongoDB:
-
-   ```powershell
-   npm run migrate-json
-   ```
-   La importación agrega practicantes que todavía no existan por ID/documento,
-   conserva los existentes sin sobrescribirlos y se puede repetir.
-4. Arranca y comprueba:
-
-   ```powershell
-   npm run dev
-   Invoke-RestMethod -Uri "http://localhost:3000/api/health"
-   ```
-
-La migración mantiene intacto `data/practicantes.json`; conserva una copia de
-respaldo antes de iniciar la importación.
-
-## Publicar en Vercel
+## Despliegue en Vercel
 
 El repositorio ya contiene `api/[...path].js` para exponer la app Express a
 través de las funciones de Vercel y `vercel.json` para enrutar `/api/*`. Los
@@ -378,7 +377,9 @@ archivos de `public/` se sirven como estáticos. Antes de desplegar:
 1. En Vercel importa el repositorio, establece la carpeta raíz del proyecto y
    añade estas variables en **Settings → Environment Variables** para
    Production (y Preview si vas a probar previews):
-   - `MONGODB_URI`: URI de conexión de MongoDB Atlas.
+   - `DATABASE_URL`: URI de conexión PostgreSQL.
+   - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` y
+     `CLOUDINARY_API_SECRET`: credenciales de Cloudinary.
    - `ADMIN_USER`: nombre de usuario administrativo.
    - `ADMIN_PASSWORD`: clave de administración fuerte.
 2. Despliega desde el panel o, con Vercel CLI ya autenticado y enlazado:
@@ -390,12 +391,12 @@ archivos de `public/` se sirven como estáticos. Antes de desplegar:
    ```
 
 3. Verifica `https://TU-DOMINIO/api/health`. La respuesta debe indicar
-   `"almacenamiento": "mongodb"` y `"ok": true`; HTTP 503 indica que falta
-   `MONGODB_URI` o que no se puede conectar al clúster.
+   `"almacenamiento": "postgresql"` y `"ok": true`; HTTP 503 indica que falta
+   `DATABASE_URL` o que no se puede conectar a PostgreSQL.
 
-No guardes credenciales de Atlas en archivos versionados. Codifica en URL los
-caracteres especiales que formen parte de la contraseña del usuario de base de
-datos.
+No guardes credenciales de base de datos ni de Cloudinary en archivos
+versionados. Codifica en URL los caracteres especiales que formen parte de la
+contraseña del usuario de base de datos.
 
 ## Preservar Python y sustituir `main` con Node.js
 

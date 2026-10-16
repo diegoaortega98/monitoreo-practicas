@@ -18,6 +18,10 @@ import {
   obtenerPracticante,
 } from "../controllers/practicantesController.js";
 import { requireAdmin } from "../middleware/auth.js";
+import {
+  listarActividadesAdmin,
+  revisarActividadAdmin,
+} from "../controllers/activitiesController.js";
 
 const router = Router();
 
@@ -40,6 +44,8 @@ router.get("/practicantes/:id", manejarAsync(obtenerPracticante));
 router.put("/practicantes/:id", manejarAsync(actualizarPracticante));
 router.delete("/practicantes/:id", manejarAsync(eliminarPracticante));
 router.get("/asistencias", manejarAsync(listarAsistencias));
+router.get("/actividades", manejarAsync(listarActividadesAdmin));
+router.patch("/actividades/:id/revision", manejarAsync(revisarActividadAdmin));
 router.post("/practicantes/:id/asistencias", manejarAsync(crearAsistenciaManual));
 router.patch(
   "/asistencias/:practicanteId/:asistenciaId",

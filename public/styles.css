@@ -256,6 +256,24 @@ a { color: var(--accent); }
 .tab-button[aria-selected="true"] { color: var(--accent); }
 .tab-button[aria-selected="true"]::after { position: absolute; right: var(--space-3); bottom: -1px; left: var(--space-3); height: 2px; border-radius: 2px 2px 0 0; background: var(--accent); content: ""; }
 .tab-panel { display: grid; gap: var(--space-4); }
+.activity-review-summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.activity-review-summary h2, .activity-review-summary p { margin: 0; }
+.activity-review-summary p { color: var(--text-muted); font-size: var(--fs-sm); }
+.activity-list { display: grid; gap: var(--space-4); }
+.activity-card { overflow: hidden; }
+.activity-card__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border); }
+.activity-card__heading h3 { margin: 0; font-size: var(--fs-md); }
+.activity-card__heading p { margin: var(--space-1) 0 0; color: var(--text-subtle); font-size: var(--fs-xs); }
+.activity-card__content, .activity-editor { display: grid; gap: var(--space-4); padding: var(--space-5); }
+.activity-card__description { margin: 0; white-space: pre-wrap; }
+.activity-card__actions { justify-content: flex-end; }
+.activity-editor h3 { margin: 0; }
+.activity-review-note { margin: 0; padding: var(--space-3); border-left: 3px solid var(--color-warning-500); background: var(--color-warning-50); color: var(--text); }
+.evidence-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-3); }
+.evidence-item { min-width: 0; margin: 0; }
+.evidence-item a { display: block; overflow: hidden; border-radius: var(--radius-md); background: var(--surface-hover); }
+.evidence-item img, .evidence-item video { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.evidence-item figcaption { overflow: hidden; margin-top: var(--space-1); color: var(--text-subtle); font-size: var(--fs-xs); text-overflow: ellipsis; white-space: nowrap; }
 .toolbar { display: grid; gap: var(--space-3); }
 .toolbar__filters { display: grid; gap: var(--space-3); }
 .toolbar__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }

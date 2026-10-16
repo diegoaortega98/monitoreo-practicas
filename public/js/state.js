@@ -16,7 +16,8 @@ export const state = {
   expiresAt: null,
   practitioners: [],
   attendances: [],
-  tab: ["practicantes", "asistencias", "agregar", "ajustes"].includes(location.hash.slice(2))
+  activities: [],
+  tab: ["practicantes", "asistencias", "actividades", "agregar", "ajustes"].includes(location.hash.slice(2))
     ? location.hash.slice(2)
     : "practicantes",
   search: preferences.search || "",

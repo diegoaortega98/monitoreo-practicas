@@ -45,6 +45,22 @@ CREATE TABLE IF NOT EXISTS registros_horas (
   descripcion TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS actividades (
+  id UUID PRIMARY KEY,
+  asistencia_id UUID NOT NULL REFERENCES asistencias(id) ON DELETE CASCADE,
+  practicante_id UUID NOT NULL REFERENCES practicantes(id) ON DELETE CASCADE,
+  descripcion TEXT NOT NULL CHECK (char_length(descripcion) BETWEEN 1 AND 2000),
+  evidencias JSONB NOT NULL DEFAULT '[]'::jsonb
+    CHECK (jsonb_typeof(evidencias) = 'array'),
+  estado TEXT NOT NULL DEFAULT 'borrador'
+    CHECK (estado IN ('borrador', 'en_revision', 'aprobada', 'observada')),
+  comentario_revision TEXT,
+  revisado_por TEXT,
+  revisado_en TIMESTAMPTZ,
+  creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS sesiones_admin (
   token_hash TEXT PRIMARY KEY,
   usuario TEXT NOT NULL,
@@ -60,5 +76,9 @@ CREATE INDEX IF NOT EXISTS idx_asistencias_entrada
   ON asistencias(hora_entrada DESC);
 CREATE INDEX IF NOT EXISTS idx_registros_horas_practicante
   ON registros_horas(practicante_id, fecha DESC);
+CREATE INDEX IF NOT EXISTS idx_actividades_asistencia
+  ON actividades(asistencia_id, creado_en);
+CREATE INDEX IF NOT EXISTS idx_actividades_revision
+  ON actividades(estado, creado_en DESC);
 CREATE INDEX IF NOT EXISTS idx_sesiones_admin_expira
   ON sesiones_admin(expira_en);

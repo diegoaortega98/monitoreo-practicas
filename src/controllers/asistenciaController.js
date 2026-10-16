@@ -49,50 +49,6 @@ export async function marcarEntrada(req, res) {
   res.status(201).json(resultado);
 }
 
-// Registra la salida abierta y suma su duración a las horas acumuladas.
-export async function marcarSalida(req, res) {
-  const { documento, descripcion } = req.body || {};
-  const documentoNormalizado = normalizarDocumento(documento);
-  if (!documentoNormalizado) {
-    throw crearError(400, "Ingresa el número de documento.");
-  }
-  if (typeof descripcion !== "string" || !descripcion.trim()) {
-    throw crearError(400, "Describe las actividades realizadas antes de marcar la salida.");
-  }
-
-  const resultado = await modificarPracticantes((practicantes) => {
-    const practicante = practicantes.find(
-      (item) => normalizarDocumento(item.documento) === documentoNormalizado,
-    );
-    if (!practicante) throw crearError(404, "No se encontró un practicante con ese documento.");
-    validarEstadoPracticante(practicante);
-    practicante.registrosAsistencia ||= [];
-    const registro = [...practicante.registrosAsistencia]
-      .reverse()
-      .find((item) => !item.horaSalida);
-    if (!registro) {
-      throw crearError(409, "No tienes una entrada pendiente para registrar la salida.");
-    }
-
-    const ahora = new Date();
-    const horas = Math.round(
-      ((ahora.getTime() - new Date(registro.horaEntrada).getTime()) / 3_600_000 +
-        Number.EPSILON) * 100,
-    ) / 100;
-    if (horas <= 0) throw crearError(400, "No se pudo calcular la duración de la asistencia.");
-    registro.horaSalida = ahora.toISOString();
-    registro.horas = horas;
-    registro.descripcion = descripcion.trim();
-    registro.actualizadoEn = ahora.toISOString();
-    practicante.horasAcumuladas =
-      Math.round((practicante.horasAcumuladas + horas + Number.EPSILON) * 100) / 100;
-    practicante.actualizadoEn = ahora.toISOString();
-    return { nombreCompleto: practicante.nombreCompleto, registro, horasAcumuladas: practicante.horasAcumuladas };
-  });
-
-  res.json(resultado);
-}
-
 // Impide marcar asistencia mientras la solicitud no esté aprobada.
 function validarEstadoPracticante(practicante) {
   if (practicante.estado === "pendiente") {

@@ -1,5 +1,13 @@
 import { Router } from "express";
-import { marcarEntrada, marcarSalida } from "../controllers/asistenciaController.js";
+import {
+  crearActividadPractica,
+  editarActividadPractica,
+  enviarJornada,
+  firmarEvidenciaPractica,
+  guardarEvidenciaPractica,
+  obtenerJornadaPractica,
+} from "../controllers/activitiesController.js";
+import { marcarEntrada } from "../controllers/asistenciaController.js";
 
 const router = Router();
 
@@ -11,6 +19,11 @@ function manejarAsync(controlador) {
 }
 
 router.post("/entrada", manejarAsync(marcarEntrada));
-router.post("/salida", manejarAsync(marcarSalida));
+router.get("/jornada", manejarAsync(obtenerJornadaPractica));
+router.post("/actividades", manejarAsync(crearActividadPractica));
+router.put("/actividades/:id", manejarAsync(editarActividadPractica));
+router.post("/actividades/:id/evidencias/firma", manejarAsync(firmarEvidenciaPractica));
+router.post("/actividades/:id/evidencias", manejarAsync(guardarEvidenciaPractica));
+router.post("/salida", manejarAsync(enviarJornada));
 
 export default router;

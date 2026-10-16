@@ -3,6 +3,7 @@ import { state } from "../state.js";
 import { button, el, formatDate } from "../utils.js";
 import { openModal } from "../ui/modal.js";
 import { toast } from "../ui/toast.js";
+import { showActivitySession } from "./actividades.js";
 
 let currentDocument = "";
 const buttonContents = new WeakMap();
@@ -51,12 +52,12 @@ export function initLanding({ onRefresh }) {
     feedback.hidden = true;
     feedback.className = "feedback";
     if (action === "salida") {
-      showActivitiesModal({
+      showActivitySession({
         documento,
-        onSubmit: (descripcion) => submitAttendance({
-          action,
+        onFinish: (result) => submitAttendance({
+          action: "salida",
           documento,
-          descripcion,
+          resultOverride: result,
           form,
           buttons,
           feedback,
@@ -83,64 +84,10 @@ export function initLanding({ onRefresh }) {
   renderRecent(recentList, recentSection);
 }
 
-function showActivitiesModal({ documento, onSubmit }) {
-  const form = el("form", "form-section");
-  form.id = "attendance-activities-form";
-  const wrapper = el("div", "field");
-  const label = el("label", "", "Actividades realizadas");
-  const description = document.createElement("textarea");
-  description.id = "attendance-activities";
-  description.name = "descripcion";
-  description.rows = 5;
-  description.required = true;
-  description.maxLength = 2000;
-  description.placeholder = "Describe las tareas que realizaste durante la jornada";
-  label.htmlFor = description.id;
-  const help = el("span", "field__message", "Este registro es obligatorio para marcar la salida.");
-  help.id = "attendance-activities-help";
-  description.setAttribute("aria-describedby", help.id);
-  wrapper.append(label, description, help);
-  form.append(wrapper);
-
-  const submit = button("Guardar actividades y marcar salida", "primary");
-  submit.type = "submit";
-  submit.setAttribute("form", form.id);
-  const footer = el("div", "inline-actions");
-  footer.append(submit);
-  const modal = openModal({
-    title: "Registrar actividades",
-    body: form,
-    footer,
-  });
-
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    if (!form.reportValidity()) return;
-    const activity = description.value.trim();
-    if (!activity) {
-      description.setCustomValidity("Describe al menos una actividad.");
-      description.reportValidity();
-      description.setCustomValidity("");
-      return;
-    }
-    submit.disabled = true;
-    submit.textContent = "Procesando…";
-    try {
-      const saved = await onSubmit(activity);
-      if (saved) modal.close();
-    } finally {
-      if (submit.isConnected) {
-        submit.disabled = false;
-        submit.textContent = "Guardar actividades y marcar salida";
-      }
-    }
-  });
-}
-
 async function submitAttendance({
   action,
   documento,
-  descripcion,
+  resultOverride,
   form,
   buttons,
   feedback,
@@ -151,9 +98,9 @@ async function submitAttendance({
   buttons.forEach((button) => setLoading(button, true));
   try {
     if (action === "entrada") await requestNotificationPermission();
-    const result = action === "entrada"
+    const result = resultOverride || (action === "entrada"
       ? await api.attendanceIn(documento)
-      : await api.attendanceOut(documento, descripcion);
+      : await api.attendanceOut(documento));
     const record = result.registro;
     if (action === "entrada") {
       savePendingAttendance(record.horaEntrada);
@@ -164,13 +111,14 @@ async function submitAttendance({
     const time = formatDate(action === "entrada" ? record.horaEntrada : record.horaSalida);
     const message = action === "entrada"
       ? `Entrada registrada a las ${time}.`
-      : `Salida registrada a las ${time}. Se sumaron ${record.horas} horas.`;
+      : `Actividades enviadas y salida registrada a las ${time}. Se sumaron ${record.horas} horas.`;
     feedback.classList.add("feedback--success");
     feedback.textContent = message;
     feedback.hidden = false;
     addRecent(recentList, action === "entrada" ? "Entrada" : "Salida", time, record.horas, documento);
     recentSection.hidden = false;
     form.reset();
+    if (action === "entrada") form.elements.documento.value = documento;
     toast(message, "success");
     await onRefresh();
     return true;
@@ -217,7 +165,7 @@ function scheduleAttendanceReminder() {
     if (!latest || latest.notified) return;
     latest.notified = true;
     writePendingAttendance(latest);
-    const message = "Llevas 5 horas desde tu entrada. Recuerda marcar la salida y registrar tus actividades.";
+    const message = "Llevas 5 horas desde tu entrada. Recuerda enviar tus actividades y marcar la salida.";
     toast(message, "warning", 10_000);
     if ("Notification" in window && Notification.permission === "granted") {
       try {

@@ -42,7 +42,7 @@
         <div class="hero">
           <span class="badge badge--info">Registro de jornada</span>
           <h1 id="landing-title">Tu práctica, <span>en seguimiento.</span></h1>
-          <p class="hero__description">Registra tu entrada y salida para llevar el control de tus horas de práctica profesional. Al salir, describe las actividades realizadas.</p>
+          <p class="hero__description">Registra tu entrada y reporta tus actividades durante la jornada. Al finalizar, envía tus actividades y marca la salida.</p>
         </div>
         <section class="card clock-card" aria-labelledby="clock-title">
           <div class="card__body">
@@ -73,7 +73,7 @@
                 </button>
                 <button class="button button--secondary button--lg" type="submit" name="accion" value="salida">
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V9m5 5-5-5-5 5"></path><path d="M5 7V4h14v3"></path></svg>
-                  Marcar salida
+                  Actividades y salida
                 </button>
               </div>
               <div id="clock-feedback" class="feedback" role="status" aria-live="polite" hidden></div>
@@ -112,6 +112,7 @@
         <nav id="dashboard-tabs" class="tabs" role="tablist" aria-label="Secciones administrativas">
           <button id="tab-practicantes" class="tab-button" type="button" role="tab" aria-selected="true" aria-controls="panel-practicantes" data-tab="practicantes">Practicantes</button>
           <button id="tab-asistencias" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-asistencias" data-tab="asistencias" tabindex="-1">Asistencias</button>
+          <button id="tab-actividades" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-actividades" data-tab="actividades" tabindex="-1">Actividades</button>
           <button id="tab-agregar" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-agregar" data-tab="agregar" tabindex="-1">Agregar</button>
           <button id="tab-ajustes" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-ajustes" data-tab="ajustes" tabindex="-1">Ajustes</button>
         </nav>
